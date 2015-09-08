@@ -80,6 +80,11 @@ constexpr std::size_t getSign() {
     return 1 << (sizeof(T) - 1);
 }
 
+template<typename T>
+char getSize(T& value) {
+    return value >> (sizeof(T) - 1);
+}
+
 //----------------------------------------------------------------------------//
 
 template<typename T>
@@ -105,10 +110,17 @@ std::uint64_t swapBytes(std::uint64_t value) {
     return SWAP_U64(value);
 }
 
+// IEEE 754-1985, double precision floating point:
+// sign: 1 bit, exponent: 11 bit, fraction: 52 bits in this order.
+template<>
+std::uint64_t swapBytes(double value) {
+    return SWAP_U64(static_cast<std::uint64_t>(value));
+}
+
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void pack(ByteSequence sequence, const T& value) {
+xoid pack(ByteSequence sequence, const T& value) {
     using Converted = boost::mpl::at<ConversionPackMap, T,
             UnableToConvert<T>>::type;
 
@@ -127,8 +139,17 @@ void pack(ByteSequence sequence, const T& value) {
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void unpack(ByteSequence sequence, const T& data) {
-    // TODO
+void unpack(ByteSequence sequence, const T& value) {
+    using Unpacked = boost::mpl::at<ConversionUnpackMap, T,
+            UnableToConvert<T>>::type;
+
+    Unpacked unpacked = swapBytes(static_cast<Unpacked>(value));
+    if (getSign(unpacked) == 1) {
+        // It is a positive number.
+        return unpacked;
+    } else {
+        return unpacked * -1;
+    }
 }
 
 //----------------------------------------------------------------------------//
