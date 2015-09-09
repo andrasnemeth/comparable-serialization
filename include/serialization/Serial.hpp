@@ -19,9 +19,12 @@ using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
 
 class Serial {
 public:
-    Serial() = default;
+    Serial() : readIterator(byteSequence.begin()) {
+    }
+
     Serial(const char* data, const std::size_t& size)
-            : byteSequence(data, size) {
+            : byteSequence(data, size),
+              readIterator(byteSequence.begin()) {
     }
 
     Serial(const Serial&) = delete;
@@ -29,14 +32,25 @@ public:
     Serial& operator=(const Serial&) = delete;
     Serial& operator=(Serial&&) = default;
 
-    template<typename Packable, typename std::enable_if<boost::mpl::contains<
-            detail::PackableData, Packable>::value>::type* = nullptr>
-    Serial& operator<<(const Packable& value) {
+    template<typename Packable>
+    typename std::enable_if<boost::mpl::contains<detail::PackableData,
+            Packable>::value, Serial&>::type
+    operator<<(const Packable& value) {
         pack(byteSequence, value);
+        return *this;
+    }
+
+    template<typename Packable>
+    typename std::enable_if<boost::mpl::contains<detail::PackableData,
+            Packable>::value, Serial&>::type
+    operator<<(Packable& value) {
+        pack(readIterator, value);
+        return *this;
     }
 
 private:
     ByteSequence byteSequence; // TODO: move ByteSequence into detail
+    ByteSequence::iterator readIterator;
 };
 
 //----------------------------------------------------------------------------//

@@ -120,7 +120,7 @@ std::uint64_t swapBytes(double value) {
 //----------------------------------------------------------------------------//
 
 template<typename T>
-xoid pack(ByteSequence sequence, const T& value) {
+void pack(ByteSequence& sequence, const T& value) {
     using Converted = boost::mpl::at<ConversionPackMap, T,
             UnableToConvert<T>>::type;
 
@@ -139,10 +139,11 @@ xoid pack(ByteSequence sequence, const T& value) {
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void unpack(ByteSequence sequence, const T& value) {
+void unpack(ByteSequence::iterator& iterator, T& value) {
     using Unpacked = boost::mpl::at<ConversionUnpackMap, T,
             UnableToConvert<T>>::type;
 
+    value = *reinterpret_cast<T*>(&*iterator); // TODO merge with below line
     Unpacked unpacked = swapBytes(static_cast<Unpacked>(value));
     if (getSign(unpacked) == 1) {
         // It is a positive number.
@@ -156,6 +157,7 @@ void unpack(ByteSequence sequence, const T& value) {
 } // namespace serialization
 //============================================================================//
 
+#undef SERIALIZATION_IDENTITY
 #under SERIALIZATION_LITTLE_ENDIAN
 #undef SERIALIZATION_BIG_ENDIAN
 #undef SERIALIZATION_NATIVE_ENDIANNESS
