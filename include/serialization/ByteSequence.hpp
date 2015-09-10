@@ -8,9 +8,11 @@
 namespace serialization {
 //----------------------------------------------------------------------------//
 
+using byte = char;
+
 // Each type has different size in memory. Therefore using a continuous memory
 // space is needed (dequeue is not good here).
-using ByteSequence = std::vector<std::uint8_t>;
+using ByteSequence = std::vector<byte>;
 
 //----------------------------------------------------------------------------//
 } // namespace serialization

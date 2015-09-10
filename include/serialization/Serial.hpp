@@ -1,7 +1,12 @@
 #ifndef SERIALIZATION_SERIAL_HPP
 #define SERIALIZATION_SERIAL_HPP
 
+#include "ByteSequence.hpp"
+#include "Sequentialize.hpp"
+
 #include <boost/mpl/vector.hpp>
+#include <boost/mpl/contains.hpp>
+#include <boost/assert.hpp>
 
 #include <cstdint>
 
@@ -19,12 +24,12 @@ using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
 
 class Serial {
 public:
-    Serial() : readIterator(byteSequence.begin()) {
+    Serial() : readOffset(0) {
     }
 
     Serial(const char* data, const std::size_t& size)
-            : byteSequence(data, size),
-              readIterator(byteSequence.begin()) {
+            : byteSequence(data, data + size),
+              readOffset(0) {
     }
 
     Serial(const Serial&) = delete;
@@ -43,14 +48,17 @@ public:
     template<typename Packable>
     typename std::enable_if<boost::mpl::contains<detail::PackableData,
             Packable>::value, Serial&>::type
-    operator<<(Packable& value) {
-        pack(readIterator, value);
+    operator>>(Packable& value) {
+        BOOST_ASSERT_MSG(readOffset + sizeof(value) < byteSequence.size(),
+                "Cannot unpack more data of this type.");
+        unpack(byteSequence.begin() + readOffset, value);
+        readOffset += sizeof(value);
         return *this;
     }
 
 private:
     ByteSequence byteSequence; // TODO: move ByteSequence into detail
-    ByteSequence::iterator readIterator;
+    std::size_t readOffset;
 };
 
 //----------------------------------------------------------------------------//

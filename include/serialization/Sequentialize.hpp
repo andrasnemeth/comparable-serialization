@@ -3,6 +3,8 @@
 
 #include "ByteSequence.hpp"
 
+#include <boost/mpl/at.hpp>
+#include <boost/mpl/insert.hpp>
 #include <boost/mpl/map.hpp>
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/pair.hpp>
@@ -26,6 +28,7 @@
 #    error "OS X is not yet supported!"
 #  endif
 #  if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#    include "byteswap.h"
 #    define SERIALIZATION_NATIVE_ENDIANNESS = SERIALIZATION_LITTLE_ENDIAN
 #    define SWAP_U16(x) bswap_16(x)
 #    define SWAP_U32(x) bswap_32(x)
@@ -60,18 +63,23 @@ struct SwapPair;
 
 template<typename T, typename U>
 struct SwapPair<boost::mpl::pair<T, U>> {
-    using type = Sequence, boost::mpl::pair<U, T>;
+    using type = boost::mpl::pair<U, T>;
 };
 
 //----------------------------------------------------------------------------//
 
-using ConversionUnpackMap = boost::mpl::transform<ConversionPackMap,
-        SwapPair<boost::mpl::placeholders::_1>>;
+using MapInserter = boost::mpl::inserter<boost::mpl::map0<>,
+        boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>;
+
+//----------------------------------------------------------------------------//
+
+using ConversionUnpackMap = typename boost::mpl::transform<ConversionPackMap,
+                SwapPair<boost::mpl::placeholders::_1>, MapInserter>::type;
 
 //----------------------------------------------------------------------------//
 
 template<typename T>
-struct UnableToConvert<T>;
+struct UnableToConvert;
 
 //============================================================================//
 
@@ -112,17 +120,16 @@ std::uint64_t swapBytes(std::uint64_t value) {
 
 // IEEE 754-1985, double precision floating point:
 // sign: 1 bit, exponent: 11 bit, fraction: 52 bits in this order.
-template<>
-std::uint64_t swapBytes(double value) {
-    return SWAP_U64(static_cast<std::uint64_t>(value));
-}
+// template<>
+// std::uint64_t swapBytes(double value) {
+//     return SWAP_U64(static_cast<std::uint64_t>(value));
+// }
 
 //----------------------------------------------------------------------------//
 
 template<typename T>
 void pack(ByteSequence& sequence, const T& value) {
-    using Converted = boost::mpl::at<ConversionPackMap, T,
-            UnableToConvert<T>>::type;
+    using Converted = typename boost::mpl::at<ConversionPackMap, T>::type;
 
     Converted converted;
     // Positive numbers get their first bit set, unlike negative numbers.
@@ -132,24 +139,23 @@ void pack(ByteSequence& sequence, const T& value) {
         converted = swapBytes(static_cast<Converted>(value * -1));
     }
 
-    std::uint8_t* valueArray = reinterpret_cast<std::uint8_t*>(&value);
+    const byte* valueArray = reinterpret_cast<const byte*>(&value);
     sequence.insert(sequence.end(), valueArray, valueArray + sizeof(Converted));
 }
 
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void unpack(ByteSequence::iterator& iterator, T& value) {
-    using Unpacked = boost::mpl::at<ConversionUnpackMap, T,
-            UnableToConvert<T>>::type;
+void unpack(const ByteSequence::iterator& iterator, T& value) {
+    using Unpacked = typename boost::mpl::at<ConversionUnpackMap, T>::type;
 
     value = *reinterpret_cast<T*>(&*iterator); // TODO merge with below line
     Unpacked unpacked = swapBytes(static_cast<Unpacked>(value));
     if (getSign(unpacked) == 1) {
         // It is a positive number.
-        return unpacked;
+        value = unpacked;
     } else {
-        return unpacked * -1;
+        value = unpacked * -1;
     }
 }
 
@@ -158,11 +164,11 @@ void unpack(ByteSequence::iterator& iterator, T& value) {
 //============================================================================//
 
 #undef SERIALIZATION_IDENTITY
-#under SERIALIZATION_LITTLE_ENDIAN
+#undef SERIALIZATION_LITTLE_ENDIAN
 #undef SERIALIZATION_BIG_ENDIAN
 #undef SERIALIZATION_NATIVE_ENDIANNESS
-#under SWAP_U16
+#undef SWAP_U16
 #undef SWAP_U32
-#under SWAP_U64
+#undef SWAP_U64
 
 #endif // SERIALIZATION_SEQUENTIALIZE_HPP
