@@ -4,11 +4,13 @@
 #include "ByteSequence.hpp"
 #include "Sequentialize.hpp"
 
+#include <boost/operators.hpp>
 #include <boost/mpl/vector.hpp>
 #include <boost/mpl/contains.hpp>
 #include <boost/assert.hpp>
 
 #include <cstdint>
+#include <cstring>
 
 //============================================================================//
 namespace serialization {
@@ -22,7 +24,7 @@ using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
 } // namespace detail
 //============================================================================//
 
-class Serial {
+class Serial : boost::totally_ordered<Serial> {
 public:
     Serial() : readOffset(0) {
     }
@@ -49,11 +51,21 @@ public:
     typename std::enable_if<boost::mpl::contains<detail::PackableData,
             Packable>::value, Serial&>::type
     operator>>(Packable& value) {
-        BOOST_ASSERT_MSG(readOffset + sizeof(value) < byteSequence.size(),
+        BOOST_ASSERT_MSG(readOffset + sizeof(value) <= byteSequence.size(),
                 "Cannot unpack more data of this type.");
         unpack(byteSequence.begin() + readOffset, value);
         readOffset += sizeof(value);
         return *this;
+    }
+
+    bool operator==(const Serial& rhs) const {
+        return memcmp(byteSequence.data(), rhs.byteSequence.data(),
+                std::min(byteSequence.size(), rhs.byteSequence.size())) == 0;
+    }
+
+    bool operator<(const Serial& rhs) const {
+        return memcmp(byteSequence.data(), rhs.byteSequence.data(),
+                std::min(byteSequence.size(), rhs.byteSequence.size())) < 0;
     }
 
 private:

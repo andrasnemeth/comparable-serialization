@@ -11,6 +11,7 @@
 #include <boost/mpl/placeholders.hpp>
 
 #include <cstdint>
+#include <cstring> // remove
 
 //============================================================================//
 
@@ -49,32 +50,12 @@
 namespace serialization {
 //----------------------------------------------------------------------------//
 
-// TODO: add mapping for double
 using ConversionPackMap = boost::mpl::map<
         boost::mpl::pair<std::int8_t, std::uint8_t>,
         boost::mpl::pair<std::int16_t, std::uint16_t>,
         boost::mpl::pair<std::int32_t, std::uint32_t>,
-        boost::mpl::pair<std::int64_t, std::uint64_t>>;
-
-//----------------------------------------------------------------------------//
-
-template<typename T>
-struct SwapPair;
-
-template<typename T, typename U>
-struct SwapPair<boost::mpl::pair<T, U>> {
-    using type = boost::mpl::pair<U, T>;
-};
-
-//----------------------------------------------------------------------------//
-
-using MapInserter = boost::mpl::inserter<boost::mpl::map0<>,
-        boost::mpl::insert<boost::mpl::_1, boost::mpl::_2>>;
-
-//----------------------------------------------------------------------------//
-
-using ConversionUnpackMap = typename boost::mpl::transform<ConversionPackMap,
-                SwapPair<boost::mpl::placeholders::_1>, MapInserter>::type;
+        boost::mpl::pair<std::int64_t, std::uint64_t>,
+        boost::mpl::pair<double, std::uint64_t>>;
 
 //----------------------------------------------------------------------------//
 
@@ -84,13 +65,25 @@ struct UnableToConvert;
 //============================================================================//
 
 template<typename T>
-constexpr std::size_t getSign() {
-    return 1 << (sizeof(T) - 1);
+constexpr T getSignShiftValue() {
+    return 8 * sizeof(T) - 1;
 }
 
 template<typename T>
-char getSize(T& value) {
-    return value >> (sizeof(T) - 1);
+constexpr T getSignValue() {
+    return static_cast<T>(1) << getSignShiftValue<T>();
+}
+
+template<typename T>
+void addSign(T& value) {
+    value |= getSignValue<T>();
+}
+
+template<typename T>
+bool removeSign(T& value) {
+    bool sign = value >> getSignShiftValue<T>();
+    value -= getSignValue<T>();
+    return sign;
 }
 
 //----------------------------------------------------------------------------//
@@ -118,45 +111,74 @@ std::uint64_t swapBytes(std::uint64_t value) {
     return SWAP_U64(value);
 }
 
-// IEEE 754-1985, double precision floating point:
-// sign: 1 bit, exponent: 11 bit, fraction: 52 bits in this order.
-// template<>
-// std::uint64_t swapBytes(double value) {
-//     return SWAP_U64(static_cast<std::uint64_t>(value));
-// }
+
+//----------------------------------------------------------------------------//
+
+template<typename PackedValue>
+void appendToSequence(ByteSequence& sequence, const PackedValue& packedValue) {
+
+    const byte* valueArray = reinterpret_cast<const byte*>(&packedValue);
+    sequence.insert(sequence.end(), valueArray,
+        valueArray + sizeof(PackedValue));
+}
 
 //----------------------------------------------------------------------------//
 
 template<typename T>
 void pack(ByteSequence& sequence, const T& value) {
-    using Converted = typename boost::mpl::at<ConversionPackMap, T>::type;
+    using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
 
-    Converted converted;
+    PackedValue packedValue;
     // Positive numbers get their first bit set, unlike negative numbers.
     if (value > 0) {
-        converted = swapBytes(static_cast<Converted>(value)) & getSign<T>();
+        packedValue = swapBytes(static_cast<PackedValue>(value));
+        addSign(packedValue);
     } else {
-        converted = swapBytes(static_cast<Converted>(value * -1));
+        packedValue = swapBytes(static_cast<PackedValue>(value * -1));
     }
 
-    const byte* valueArray = reinterpret_cast<const byte*>(&value);
-    sequence.insert(sequence.end(), valueArray, valueArray + sizeof(Converted));
+    appendToSequence(sequence, packedValue);
+    // const byte* valueArray = reinterpret_cast<const byte*>(&packedValue);
+    // sequence.insert(sequence.end(), valueArray,
+    //         valueArray + sizeof(PackedValue));
+}
+
+// IEEE-754: double floating point representation
+// sign: 1 bit, exponent: 11 bit, fraction: 52 bit
+void pack(ByteSequence& sequence, double value) {
+    using PackedValue = typename boost::mpl::at<ConversionPackMap,
+            double>::type;
+
+    // trick the first bit :)
+    value *= -1;
+    PackedValue packedValue = *reinterpret_cast<const std::uint64_t*>(&value);
+    packedValue = swapBytes(packedValue);
+
+    appendToSequence(sequence, packedValue);
 }
 
 //----------------------------------------------------------------------------//
 
 template<typename T>
 void unpack(const ByteSequence::iterator& iterator, T& value) {
-    using Unpacked = typename boost::mpl::at<ConversionUnpackMap, T>::type;
+    using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
 
-    value = *reinterpret_cast<T*>(&*iterator); // TODO merge with below line
-    Unpacked unpacked = swapBytes(static_cast<Unpacked>(value));
-    if (getSign(unpacked) == 1) {
-        // It is a positive number.
-        value = unpacked;
-    } else {
-        value = unpacked * -1;
+    PackedValue* packedValue = reinterpret_cast<PackedValue*>(&*iterator);
+    bool hasSign = removeSign(*packedValue);
+    value = static_cast<T>(swapBytes(*packedValue));
+    if (!hasSign) {
+        // It is a negative number.
+        value *= -1;
     }
+}
+
+void unpack(const ByteSequence::iterator& iterator, double& value) {
+    using PackedValue = typename boost::mpl::at<ConversionPackMap,
+            double>::type;
+
+    PackedValue packedValue = swapBytes(*reinterpret_cast<PackedValue*>(
+                    &*iterator));
+    value = *reinterpret_cast<double*>(&packedValue) * -1;
 }
 
 //----------------------------------------------------------------------------//
