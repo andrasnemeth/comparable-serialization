@@ -46,6 +46,11 @@
 #  error "Compiler not yet supported!"
 #endif
 
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
+
+static_assert(sizeof(double) == 8, "Extended double precision floating point "
+        "numbers are not supported!");
+
 //============================================================================//
 namespace serialization {
 //----------------------------------------------------------------------------//
@@ -82,7 +87,7 @@ void addSign(T& value) {
 template<typename T>
 bool removeSign(T& value) {
     bool sign = value >> getSignShiftValue<T>();
-    value -= getSignValue<T>();
+    value &= getSignValue<T>() - 1;
     return sign;
 }
 
