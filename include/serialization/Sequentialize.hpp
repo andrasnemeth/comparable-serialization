@@ -94,25 +94,25 @@ bool removeSign(T& value) {
 //----------------------------------------------------------------------------//
 
 template<typename T>
-T swapBytes(T value);
+T swapBytes(const T& value);
 
 template<>
-std::uint8_t swapBytes(std::uint8_t value) {
+std::uint8_t swapBytes(const std::uint8_t& value) {
     return value;
 }
 
 template<>
-std::uint16_t swapBytes(std::uint16_t value) {
+std::uint16_t swapBytes(const std::uint16_t& value) {
     return SWAP_U16(value);
 }
 
 template<>
-std::uint32_t swapBytes(std::uint32_t value) {
+std::uint32_t swapBytes(const std::uint32_t& value) {
     return SWAP_U32(value);
 }
 
 template<>
-std::uint64_t swapBytes(std::uint64_t value) {
+std::uint64_t swapBytes(const std::uint64_t& value) {
     return SWAP_U64(value);
 }
 
@@ -136,10 +136,10 @@ void pack(ByteSequence& sequence, const T& value) {
     PackedValue packedValue;
     // Positive numbers get their first bit set, unlike negative numbers.
     if (value > 0) {
-        packedValue = swapBytes(static_cast<PackedValue>(value));
+        packedValue = swapBytes(static_cast<const PackedValue>(value));
         addSign(packedValue);
     } else {
-        packedValue = swapBytes(static_cast<PackedValue>(value * -1));
+        packedValue = swapBytes(static_cast<const PackedValue>(value * -1));
     }
 
     appendToSequence(sequence, packedValue);
@@ -165,25 +165,26 @@ void pack(ByteSequence& sequence, double value) {
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void unpack(const ByteSequence::iterator& iterator, T& value) {
+void unpack(const ByteSequence::const_iterator& iterator, T& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
 
-    PackedValue* packedValue = reinterpret_cast<PackedValue*>(&*iterator);
-    bool hasSign = removeSign(*packedValue);
-    value = static_cast<T>(swapBytes(*packedValue));
+    PackedValue packedValue = *reinterpret_cast<const PackedValue*>(
+            &*iterator);
+    bool hasSign = removeSign(packedValue);
+    value = static_cast<T>(swapBytes(packedValue));
     if (!hasSign) {
         // It is a negative number.
         value *= -1;
     }
 }
 
-void unpack(const ByteSequence::iterator& iterator, double& value) {
+void unpack(const ByteSequence::const_iterator& iterator, double& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap,
             double>::type;
 
-    PackedValue packedValue = swapBytes(*reinterpret_cast<PackedValue*>(
-                    &*iterator));
-    value = *reinterpret_cast<double*>(&packedValue) * -1;
+    PackedValue packedValue =
+            swapBytes(*reinterpret_cast<const PackedValue*>(&*iterator));
+    value = *reinterpret_cast<const double*>(&packedValue) * -1;
 }
 
 //----------------------------------------------------------------------------//
