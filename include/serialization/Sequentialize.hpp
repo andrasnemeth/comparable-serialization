@@ -97,7 +97,7 @@ template<typename T>
 T swapBytes(T value);
 
 template<>
-std::uint8_t& swapBytes(std::uint8_t& value) {
+std::uint8_t swapBytes(std::uint8_t value) {
     return value;
 }
 

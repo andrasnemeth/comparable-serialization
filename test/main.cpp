@@ -4,7 +4,7 @@
 
 template<typename T>
 void convertAndPrint(const T& value) {
-    serialization::Serial serial;
+    serialization::Serial<> serial;
     serial << value;
 
     T reconstructedValue;
@@ -15,7 +15,7 @@ void convertAndPrint(const T& value) {
 
 template<typename T>
 void compareAndPrint(const T& value1, const T& value2) {
-    serialization::Serial s1, s2;
+    serialization::Serial<> s1, s2;
     s1 << value1;
     s2 << value2;
 
