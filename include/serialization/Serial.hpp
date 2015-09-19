@@ -66,7 +66,7 @@ private:
 
     static_assert(boost::mpl::size<SerializableData>::value
             + boost::mpl::size<detail::PackableData>::value
-            < std::numeric_limits<std::uint8_t>::max(),
+            < std::numeric_limits<std::int8_t>::max(),
             "Too many custom types!");
 
 public:
