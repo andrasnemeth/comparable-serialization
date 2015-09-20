@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <cstring> // remove
+#include <string>
 
 //============================================================================//
 
@@ -143,29 +144,33 @@ void pack(ByteSequence& sequence, const T& value) {
     }
 
     appendToSequence(sequence, packedValue);
-    // const byte* valueArray = reinterpret_cast<const byte*>(&packedValue);
-    // sequence.insert(sequence.end(), valueArray,
-    //         valueArray + sizeof(PackedValue));
 }
 
 // IEEE-754: double floating point representation
 // sign: 1 bit, exponent: 11 bit, fraction: 52 bit
+// It seems good as it is now, no reason why to change that
 void pack(ByteSequence& sequence, double value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap,
             double>::type;
 
     // trick the first bit :)
     value *= -1;
-    PackedValue packedValue = *reinterpret_cast<const std::uint64_t*>(&value);
+    PackedValue packedValue = *reinterpret_cast<const PackedValue*>(&value);
     packedValue = swapBytes(packedValue);
 
     appendToSequence(sequence, packedValue);
 }
 
+void pack(ByteSequence& sequence, const std::string& value) {
+    const byte* valueArray = reinterpret_cast<const byte*>(value.c_str());
+    sequence.insert(sequence.end(), valueArray,
+            valueArray + value.length() + 1); // \0 byte
+}
+
 //----------------------------------------------------------------------------//
 
 template<typename T>
-void unpack(const ByteSequence::const_iterator& iterator, T& value) {
+std::size_t unpack(const ByteSequence::const_iterator& iterator, T& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
 
     PackedValue packedValue = *reinterpret_cast<const PackedValue*>(
@@ -176,15 +181,24 @@ void unpack(const ByteSequence::const_iterator& iterator, T& value) {
         // It is a negative number.
         value *= -1;
     }
+    return sizeof(value);
 }
 
-void unpack(const ByteSequence::const_iterator& iterator, double& value) {
+std::size_t unpack(const ByteSequence::const_iterator& iterator, double& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap,
             double>::type;
 
     PackedValue packedValue =
             swapBytes(*reinterpret_cast<const PackedValue*>(&*iterator));
     value = *reinterpret_cast<const double*>(&packedValue) * -1;
+    return sizeof(value);
+}
+
+std::size_t unpack(const ByteSequence::const_iterator& iterator,
+        std::string& value) {
+    const char* valueArray = reinterpret_cast<const char*>(&*iterator);
+    value.assign(valueArray);
+    return value.length() + 1; // \0 byte
 }
 
 //----------------------------------------------------------------------------//

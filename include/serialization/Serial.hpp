@@ -28,7 +28,7 @@ namespace detail {
 //----------------------------------------------------------------------------//
 
 using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
-        std::int64_t, double>;
+        std::int64_t, double, std::string>;
 
 //----------------------------------------------------------------------------//
 
@@ -270,8 +270,9 @@ public:
 private:
     template<typename Value>
     void safeUnpack(Value& value) {
-        unpack(byteSequence.begin() + readOffset, value);
-        readOffset += sizeof(value);
+        std::size_t bytesProcessed =
+            unpack(byteSequence.begin() + readOffset, value);
+        readOffset += bytesProcessed;
     }
 
     ByteSequence byteSequence; // TODO: move ByteSequence into detail
