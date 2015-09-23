@@ -1,0 +1,8 @@
+INCLUDE = -Iinclude
+CXXFLAGS = -std=c++11
+GTEST_DIR = modules/googletest/googletest
+GTEST_LIB = $(GTEST_DIR)/build/libgtest.a
+GTEST_INCLUDE = $(GTEST_DIR)/include
+
+#: |> git submodule update --init --recursive modules/googletest |> modules/googletest
+: test/unit-test.cpp |> clang++ test/unit-test.cpp $(GTEST_LIB) $(CXXFLAGS) $(INCLUDE) $(GTEST_INCLUDE) -o %o |> unit-test
