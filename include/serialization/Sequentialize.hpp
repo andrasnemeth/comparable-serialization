@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <cstring> // remove
+#include <limits>
 #include <string>
 
 //============================================================================//
@@ -49,6 +50,8 @@
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
+// in MSVC double is a long double?
+// Just to be sure, size of double must be 8 at least until tested.
 static_assert(sizeof(double) == 8, "Extended double precision floating point "
         "numbers are not supported!");
 
@@ -56,46 +59,8 @@ static_assert(sizeof(double) == 8, "Extended double precision floating point "
 namespace serialization {
 //----------------------------------------------------------------------------//
 
-using ConversionPackMap = boost::mpl::map<
-        boost::mpl::pair<std::int8_t, std::uint8_t>,
-        boost::mpl::pair<std::int16_t, std::uint16_t>,
-        boost::mpl::pair<std::int32_t, std::uint32_t>,
-        boost::mpl::pair<std::int64_t, std::uint64_t>,
-        boost::mpl::pair<double, std::uint64_t>>;
-
-//----------------------------------------------------------------------------//
-
-template<typename T>
-struct UnableToConvert;
-
-//============================================================================//
-
-template<typename T>
-constexpr T getSignShiftValue() {
-    return 8 * sizeof(T) - 1;
-}
-
-template<typename T>
-constexpr T getSignValue() {
-    return static_cast<T>(1) << getSignShiftValue<T>();
-}
-
-template<typename T>
-void addSign(T& value) {
-    value |= getSignValue<T>();
-}
-
-template<typename T>
-bool removeSign(T& value) {
-    bool sign = value >> getSignShiftValue<T>();
-    value &= getSignValue<T>() - 1;
-    return sign;
-}
-
-//----------------------------------------------------------------------------//
-
-template<typename T>
-T swapBytes(const T& value);
+template<typename Int>
+Int swapBytes(const Int& value);
 
 template<>
 std::uint8_t swapBytes(const std::uint8_t& value) {
@@ -117,6 +82,40 @@ std::uint64_t swapBytes(const std::uint64_t& value) {
     return SWAP_U64(value);
 }
 
+//----------------------------------------------------------------------------//
+
+#undef SERIALIZATION_IDENTITY
+#undef SERIALIZATION_LITTLE_ENDIAN
+#undef SERIALIZATION_BIG_ENDIAN
+#undef SERIALIZATION_NATIVE_ENDIANNESS
+#undef SWAP_U16
+#undef SWAP_U32
+#undef SWAP_U64
+
+//----------------------------------------------------------------------------//
+
+using ConversionPackMap = boost::mpl::map<
+        boost::mpl::pair<std::int8_t, std::uint8_t>,
+        boost::mpl::pair<std::int16_t, std::uint16_t>,
+        boost::mpl::pair<std::int32_t, std::uint32_t>,
+        boost::mpl::pair<std::int64_t, std::uint64_t>,
+        boost::mpl::pair<double, std::uint64_t>>;
+
+//----------------------------------------------------------------------------//
+
+template<typename Int>
+struct UnableToConvert;
+
+//============================================================================//
+
+template<typename UnsignedInt>
+constexpr UnsignedInt getZero() {
+    static_assert(!std::is_signed<UnsignedInt>::value,
+            "This is not an unsigned int!");
+    return std::numeric_limits<UnsignedInt>::max() -
+        std::numeric_limits<
+            typename std::make_signed<UnsignedInt>::type>::max();
+}
 
 //----------------------------------------------------------------------------//
 
@@ -130,17 +129,18 @@ void appendToSequence(ByteSequence& sequence, const PackedValue& packedValue) {
 
 //----------------------------------------------------------------------------//
 
-template<typename T>
-void pack(ByteSequence& sequence, const T& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
+template<typename Int>
+void pack(ByteSequence& sequence, const Int& value) {
+    using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
 
-    PackedValue packedValue;
-    // Positive numbers get their first bit set, unlike negative numbers.
-    if (value > 0) {
-        packedValue = swapBytes(static_cast<const PackedValue>(value));
-        addSign(packedValue);
+    PackedValue packedValue = 0;//getZero<PackedValue>();
+    if (value >= 0) {
+        packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value)
+                + static_cast<PackedValue>(std::numeric_limits<Int>::max()));
     } else {
-        packedValue = swapBytes(static_cast<const PackedValue>(value * -1));
+        packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value
+                + static_cast<PackedValue>(std::numeric_limits<Int>::max())
+                + static_cast<PackedValue>(1)));
     }
 
     appendToSequence(sequence, packedValue);
@@ -152,6 +152,8 @@ void pack(ByteSequence& sequence, const T& value) {
 void pack(ByteSequence& sequence, double value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap,
             double>::type;
+
+    // TODO: special values
 
     // trick the first bit :)
     value *= -1;
@@ -169,18 +171,22 @@ void pack(ByteSequence& sequence, const std::string& value) {
 
 //----------------------------------------------------------------------------//
 
-template<typename T>
-std::size_t unpack(const ByteSequence::const_iterator& iterator, T& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap, T>::type;
+template<typename Int>
+std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
+    using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
 
-    PackedValue packedValue = *reinterpret_cast<const PackedValue*>(
-            &*iterator);
-    bool hasSign = removeSign(packedValue);
-    value = static_cast<T>(swapBytes(packedValue));
-    if (!hasSign) {
-        // It is a negative number.
-        value *= -1;
+    PackedValue packedValue = swapBytes(*reinterpret_cast<const PackedValue*>(
+                    &*iterator));
+
+    if (packedValue >= getZero<PackedValue>()) {
+        value = static_cast<Int>(packedValue -
+                static_cast<PackedValue>(std::numeric_limits<Int>::max()));
+    } else {
+        value = static_cast<Int>(packedValue
+                - static_cast<PackedValue>(std::numeric_limits<Int>::max())
+                - static_cast<PackedValue>(1));
     }
+
     return sizeof(value);
 }
 
@@ -204,13 +210,5 @@ std::size_t unpack(const ByteSequence::const_iterator& iterator,
 //----------------------------------------------------------------------------//
 } // namespace serialization
 //============================================================================//
-
-#undef SERIALIZATION_IDENTITY
-#undef SERIALIZATION_LITTLE_ENDIAN
-#undef SERIALIZATION_BIG_ENDIAN
-#undef SERIALIZATION_NATIVE_ENDIANNESS
-#undef SWAP_U16
-#undef SWAP_U32
-#undef SWAP_U64
 
 #endif // SERIALIZATION_SEQUENTIALIZE_HPP
