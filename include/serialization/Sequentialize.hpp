@@ -117,6 +117,12 @@ constexpr UnsignedInt getZero() {
             typename std::make_signed<UnsignedInt>::type>::max();
 }
 
+template<typename Int, typename PackedValue>
+constexpr PackedValue getOffset() {
+    return static_cast<PackedValue>(std::numeric_limits<Int>::max())
+            + static_cast<PackedValue>(1);
+}
+
 //----------------------------------------------------------------------------//
 
 template<typename PackedValue>
@@ -136,11 +142,10 @@ void pack(ByteSequence& sequence, const Int& value) {
     PackedValue packedValue = 0;//getZero<PackedValue>();
     if (value >= 0) {
         packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value)
-                + static_cast<PackedValue>(std::numeric_limits<Int>::max()));
+                + getOffset<Int, PackedValue>());
     } else {
         packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value
-                + static_cast<PackedValue>(std::numeric_limits<Int>::max())
-                + static_cast<PackedValue>(1)));
+                + getOffset<Int, PackedValue>()));
     }
 
     appendToSequence(sequence, packedValue);
@@ -179,12 +184,9 @@ std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
                     &*iterator));
 
     if (packedValue >= getZero<PackedValue>()) {
-        value = static_cast<Int>(packedValue -
-                static_cast<PackedValue>(std::numeric_limits<Int>::max()));
+        value = static_cast<Int>(packedValue - getOffset<Int, PackedValue>());
     } else {
-        value = static_cast<Int>(packedValue
-                - static_cast<PackedValue>(std::numeric_limits<Int>::max())
-                - static_cast<PackedValue>(1));
+        value = static_cast<Int>(packedValue - getOffset<Int, PackedValue>());
     }
 
     return sizeof(value);

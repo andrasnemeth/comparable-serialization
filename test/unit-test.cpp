@@ -15,7 +15,7 @@
 template<typename Int>
 class SequentializeIntTest : public ::testing::Test {
 protected:
-    const std::vector<std::pair<std::int64_t, std::int64_t>> testData{
+    const std::vector<std::pair<std::int64_t, std::int64_t>> testData{{0, -1},
         {5, 1}, {140, -45}, {std::numeric_limits<std::int8_t>::max(),
                 std::numeric_limits<std::int8_t>::min() + 1},
         {5430, 4432}, {3322, -1122}, {std::numeric_limits<std::int16_t>::max(),
@@ -40,12 +40,14 @@ typename std::make_unsigned<Int>::type swapValue(const Int& value) {
 
     if (value < 0) {
         return boost::endian::native_to_big(
-                static_cast<UnsignedInt>(value +
-                        std::numeric_limits<Int>::max()
+                static_cast<UnsignedInt>(value
+                        + static_cast<UnsignedInt>(
+                                std::numeric_limits<Int>::max())
                         + static_cast<UnsignedInt>(1)));
     } else {
         UnsignedInt unsignedInt = static_cast<UnsignedInt>(value)
-            + static_cast<UnsignedInt>(std::numeric_limits<Int>::max());
+                + static_cast<UnsignedInt>(std::numeric_limits<Int>::max()
+                + static_cast<UnsignedInt>(1));
 
         return boost::endian::native_to_big(unsignedInt);
     }
