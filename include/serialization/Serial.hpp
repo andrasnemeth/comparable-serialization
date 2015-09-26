@@ -122,16 +122,16 @@ private:
             < std::numeric_limits<std::int8_t>::max(),
             "Too many custom types!");
 
-    constexpr static const std::uint8_t CUSTOM_TYPE_OFFSET =
+    constexpr static const std::int8_t CUSTOM_TYPE_OFFSET =
             boost::mpl::size<detail::PackableData>::value;
 
 public:
-    Serial() : readOffset(0) {
+    Serial() : readOffset{0} {
     }
 
     Serial(const char* data, const std::size_t& size)
-            : byteSequence(data, data + size),
-            readOffset(0) {
+            : byteSequence{data, data + size},
+              readOffset{0} {
     }
 
     Serial(const Serial&) = delete;
@@ -180,7 +180,7 @@ public:
                 "Don't know how to serialize T. Provide "
                 "'Serial& serialize(const T&, Serial&)' or make it "
                 "'Serializable'!");
-        constexpr std::uint8_t typeId = detail::ElementIndex<
+        constexpr std::int8_t typeId = detail::ElementIndex<
                 SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
         constexpr bool hasTypeId = typeId ==
                 boost::mpl::size<SerializableData>::type::value
@@ -195,8 +195,6 @@ public:
     template<typename Packable>
     typename std::enable_if<detail::IsPackable<Packable>::value, Serial&>::type
     operator>>(Packable& value) {
-        BOOST_ASSERT_MSG(readOffset + sizeof(value) <= byteSequence.size(),
-                "Cannot unpack more data of this type.");
         constexpr std::int8_t typeId = detail::ElementIndex<
                 detail::PackableData, Packable>::value;
         std::int8_t unpackedTypeId;
@@ -270,8 +268,11 @@ public:
 private:
     template<typename Value>
     void safeUnpack(Value& value) {
-        std::size_t bytesProcessed =
-            unpack(byteSequence.begin() + readOffset, value);
+        ByteSequence::const_iterator readIterator = byteSequence.cbegin();
+        std::advance(readIterator, readOffset);
+        BOOST_ASSERT_MSG(readOffset + sizeof(value) <= byteSequence.size(),
+                "Cannot unpack more data of this type.");
+        std::size_t bytesProcessed = unpack(readIterator, value);
         readOffset += bytesProcessed;
     }
 

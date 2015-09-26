@@ -1,5 +1,5 @@
 INCLUDE = -Iinclude
-CXXFLAGS = -std=c++11 -fdiagnostics-color
+CXXFLAGS = -std=c++11 -fdiagnostics-color -O0 -g3
 GTEST_DIR = modules/googletest/googletest
 GTEST_LIB = $(GTEST_DIR)/build/libgtest_main.a $(GTEST_DIR)/build/libgtest.a
 GTEST_INCLUDE = -I$(GTEST_DIR)/include

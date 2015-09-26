@@ -88,9 +88,30 @@ TYPED_TEST_P(SequentializeIntTest, PackAndUnpack) {
     }
 }
 
+TYPED_TEST_P(SequentializeIntTest, SerializeAndCompareData) {
+    for (const auto& pair : this->testData) {
+        if (pair.first <= std::numeric_limits<TypeParam>::max() &&
+                pair.first >= std::numeric_limits<TypeParam>::min() &&
+                pair.second <= std::numeric_limits<TypeParam>::max() &&
+                pair.second >= std::numeric_limits<TypeParam>::min()) {
+            serialization::Serial<> serial1, serial2;
+            serial1 << static_cast<TypeParam>(pair.first);
+            serial2 << static_cast<TypeParam>(pair.second);
+            EXPECT_NE(serial1, serial2);
+            EXPECT_GT(serial1, serial2);
+            TypeParam data1, data2;
+            serial1 >> data1;
+            serial2 >> data2;
+            EXPECT_EQ(pair.first, data1);
+            EXPECT_EQ(pair.second, data2);
+        }
+    }
+}
+
 //----------------------------------------------------------------------------//
 
-REGISTER_TYPED_TEST_CASE_P(SequentializeIntTest, PackAndUnpack);
+REGISTER_TYPED_TEST_CASE_P(SequentializeIntTest, PackAndUnpack,
+        SerializeAndCompareData);
 
 using PackableIntTypes = ::testing::Types<std::int8_t, std::int16_t,
         std::int32_t, std::int64_t>;
