@@ -11,10 +11,50 @@
 #include <vector>
 
 //============================================================================//
+namespace {
+//----------------------------------------------------------------------------//
 
 template<typename Int>
 class SequentializeIntTest : public ::testing::Test {
 protected:
+    typename std::make_unsigned<Int>::type swapValue(const Int& value) {
+        static_assert(std::is_signed<Int>::value, "Not a signed int");
+
+        using UnsignedInt = typename std::make_unsigned<Int>::type;
+
+        if (value < 0) {
+            return boost::endian::native_to_big(
+                    static_cast<UnsignedInt>(value
+                            + static_cast<UnsignedInt>(
+                                    std::numeric_limits<Int>::max())
+                            + static_cast<UnsignedInt>(1)));
+        } else {
+            UnsignedInt unsignedInt = static_cast<UnsignedInt>(value)
+                + static_cast<UnsignedInt>(std::numeric_limits<Int>::max()
+                        + static_cast<UnsignedInt>(1));
+
+            return boost::endian::native_to_big(unsignedInt);
+        }
+    }
+
+    void packAndUnpack(const Int& value) {
+        using PackedInt = typename std::make_unsigned<Int>::type;
+
+        serialization::ByteSequence byteSequence;
+        PackedInt swappedValue = swapValue(value);
+        serialization::pack(byteSequence, value);
+        ASSERT_EQ(sizeof(Int), byteSequence.size());
+        PackedInt packedValue = *reinterpret_cast<const PackedInt*>(
+                byteSequence.data());
+
+        EXPECT_EQ(swappedValue, packedValue) << "original value is: " << value;
+
+        Int reconstructedValue = 0;
+        EXPECT_EQ(sizeof(Int), serialization::unpack(byteSequence.begin(),
+                        reconstructedValue));
+        EXPECT_EQ(value, reconstructedValue);
+    }
+
     const std::vector<std::pair<std::int64_t, std::int64_t>> testData{{0, -1},
         {5, 1}, {140, -45}, {std::numeric_limits<std::int8_t>::max(),
                 std::numeric_limits<std::int8_t>::min() + 1},
@@ -32,58 +72,18 @@ TYPED_TEST_CASE_P(SequentializeIntTest);
 
 //----------------------------------------------------------------------------//
 
-template<typename Int>
-typename std::make_unsigned<Int>::type swapValue(const Int& value) {
-    static_assert(std::is_signed<Int>::value, "Not a signed int");
-
-    using UnsignedInt = typename std::make_unsigned<Int>::type;
-
-    if (value < 0) {
-        return boost::endian::native_to_big(
-                static_cast<UnsignedInt>(value
-                        + static_cast<UnsignedInt>(
-                                std::numeric_limits<Int>::max())
-                        + static_cast<UnsignedInt>(1)));
-    } else {
-        UnsignedInt unsignedInt = static_cast<UnsignedInt>(value)
-                + static_cast<UnsignedInt>(std::numeric_limits<Int>::max()
-                + static_cast<UnsignedInt>(1));
-
-        return boost::endian::native_to_big(unsignedInt);
-    }
-}
-
-template<typename Int>
-void testPack(const Int& value) {
-    using PackedInt = typename std::make_unsigned<Int>::type;
-
-    serialization::ByteSequence byteSequence;
-    PackedInt swappedValue = swapValue(value);
-    serialization::pack(byteSequence, value);
-    ASSERT_EQ(sizeof(Int), byteSequence.size());
-    PackedInt packedValue = *reinterpret_cast<const PackedInt*>(
-            byteSequence.data());
-
-    EXPECT_EQ(swappedValue, packedValue) << "original value is: " << value;
-
-    Int reconstructedValue = 0;
-    EXPECT_EQ(sizeof(Int), serialization::unpack(byteSequence.begin(),
-                    reconstructedValue));
-    EXPECT_EQ(value, reconstructedValue);
-}
-
 TYPED_TEST_P(SequentializeIntTest, PackAndUnpack) {
     using PackedInt = typename std::make_unsigned<TypeParam>::type;
 
     for (const auto& pair : this->testData) {
         if (pair.first <= std::numeric_limits<TypeParam>::max() &&
                 pair.first >= std::numeric_limits<TypeParam>::min()) {
-            testPack(static_cast<TypeParam>(pair.first));
+            this->packAndUnpack(static_cast<TypeParam>(pair.first));
         }
 
         if (pair.second <= std::numeric_limits<TypeParam>::max() &&
                 pair.second >= std::numeric_limits<TypeParam>::min()) {
-            testPack(static_cast<TypeParam>(pair.second));
+            this->packAndUnpack(static_cast<TypeParam>(pair.second));
         }
     }
 }
@@ -118,3 +118,69 @@ using PackableIntTypes = ::testing::Types<std::int8_t, std::int16_t,
 
 INSTANTIATE_TYPED_TEST_CASE_P(PackableIntTestcase, SequentializeIntTest,
         PackableIntTypes);
+
+//============================================================================//
+
+class DoubleTest : public ::testing::Test {
+protected:
+    void packAndUnpack(const double& data) {
+        serialization::ByteSequence byteSequence;
+        serialization::pack(byteSequence, data);
+        double unpackedData;
+        EXPECT_EQ(sizeof(data), byteSequence.size());
+        serialization::unpack(byteSequence.begin(), unpackedData);
+        if (isnan(data)) {
+            EXPECT_TRUE(isnan(data) && isnan(unpackedData));
+        } else {
+            EXPECT_EQ(data, unpackedData);
+        }
+    }
+
+    const std::vector<std::pair<double, double>> testData{{1.0, 0.0},
+            {0.034354543, -1.0}, {0.1, NAN},
+            {12312434830249234123123.345453, -34345435345343454354.1234454564},
+            {std::numeric_limits<double>::max(),
+                    std::numeric_limits<double>::infinity() * -1},
+            {234.342352454123123324554353443254543, -0.34353465465423423423423},
+            {NAN, std::numeric_limits<double>::infinity() * -1},
+            {std::numeric_limits<double>::infinity(),
+                    std::numeric_limits<double>::max()},
+            {0.3435453653432423423, std::numeric_limits<double>::min()}};
+};
+
+//----------------------------------------------------------------------------//
+
+TEST_F(DoubleTest, PackAndUnpack) {
+    for (const auto& pair : testData) {
+        packAndUnpack(pair.first);
+        packAndUnpack(pair.second);
+    }
+}
+
+TEST_F(DoubleTest, SerializeAndCompareData) {
+    for (const auto& pair: testData) {
+        serialization::Serial<> serial1, serial2;
+        serial1 << pair.first;
+        serial2 << pair.second;
+        EXPECT_NE(serial1, serial2);
+        EXPECT_GT(serial1, serial2) << "Original pair: {" << pair.first
+                << ", " << pair.second << "}";
+        double data1, data2;
+        serial1 >> data1;
+        serial2 >> data2;
+        if (isnan(data1)) {
+            EXPECT_TRUE(isnan(pair.first) && isnan(data1));
+        } else {
+            EXPECT_EQ(pair.first, data1);
+        }
+        if (isnan(data2)) {
+            EXPECT_TRUE(isnan(pair.second) && isnan(data2));
+        } else {
+            EXPECT_EQ(pair.second, data2);
+        }
+    }
+}
+
+//----------------------------------------------------------------------------//
+} // unnamed namespace
+//============================================================================//
