@@ -138,6 +138,9 @@ void appendToSequence(ByteSequence& sequence, const PackedValue& packedValue) {
 template<typename Int>
 void pack(ByteSequence& sequence, const Int& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
+    static_assert(!std::is_same<PackedValue,
+            boost::mpl::end<ConversionPackMap>::type>::value,
+            "Cannot pack this type!");
 
     PackedValue packedValue = 0;//getZero<PackedValue>();
     if (value >= 0) {
@@ -179,6 +182,9 @@ void pack(ByteSequence& sequence, const std::string& value) {
 template<typename Int>
 std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
     using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
+    static_assert(!std::is_same<PackedValue,
+            boost::mpl::end<ConversionPackMap>::type>::value,
+            "Cannot pack this type!");
 
     PackedValue packedValue = swapBytes(*reinterpret_cast<const PackedValue*>(
                     &*iterator));

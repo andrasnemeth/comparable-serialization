@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <boost/endian/conversion.hpp>
+#include <boost/mpl/vector.hpp>
 
 #include <limits>
 #include <type_traits>
@@ -130,7 +131,7 @@ protected:
         EXPECT_EQ(sizeof(data), byteSequence.size());
         serialization::unpack(byteSequence.begin(), unpackedData);
         if (isnan(data)) {
-            EXPECT_TRUE(isnan(data) && isnan(unpackedData));
+            EXPECT_TRUE(isnan(unpackedData));
         } else {
             EXPECT_EQ(data, unpackedData);
         }
@@ -169,17 +170,68 @@ TEST_F(DoubleTest, SerializeAndCompareData) {
         serial1 >> data1;
         serial2 >> data2;
         if (isnan(data1)) {
-            EXPECT_TRUE(isnan(pair.first) && isnan(data1));
+            EXPECT_TRUE(isnan(pair.first));
         } else {
             EXPECT_EQ(pair.first, data1);
         }
         if (isnan(data2)) {
-            EXPECT_TRUE(isnan(pair.second) && isnan(data2));
+            EXPECT_TRUE(isnan(pair.second));
         } else {
             EXPECT_EQ(pair.second, data2);
         }
     }
 }
+
+//============================================================================//
+class SerializableTest : public ::testing::Test {
+protected:
+    class Foo;
+    using Serial = serialization::Serial<boost::mpl::vector<>>;
+
+    class Foo {
+    public:
+        Foo() : value1(1234), value2(0.0000043) {
+        }
+
+        void serialize(Serial& serial) const {
+            serial << value1;
+            serial << value2;
+        }
+
+        void deserialize(Serial& serial) {
+            serial >> value1;
+            serial >> value2;
+        }
+
+        bool operator==(const Foo& other) const {
+            return value1 == other.value1 && value2 == other.value2;
+        }
+
+        bool operator>(const Foo& other) const {
+            return value1 > other.value1 && value2 > other.value2;
+        }
+
+   private:
+        int value1;
+        double value2;
+    };
+};
+
+//----------------------------------------------------------------------------//
+
+TEST_F(SerializableTest, TestFoo) {
+    Serial serial;
+    Foo foo, recreatedFoo;
+
+    serial << foo;
+    serial >> recreatedFoo;
+
+    EXPECT_EQ(foo, recreatedFoo);
+}
+
+// TODO: add negative tests
+// TODO: add int tests including promotion
+// TODO: string tests
 
 //----------------------------------------------------------------------------//
 } // unnamed namespace

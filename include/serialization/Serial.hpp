@@ -15,6 +15,7 @@
 #include <boost/mpl/size.hpp>
 #include <boost/mpl/vector.hpp>
 #include <boost/operators.hpp>
+#include <boost/tti/has_member_function.hpp>
 
 #include <cstdint>
 #include <cstring>
@@ -23,29 +24,52 @@
 #include <utility>
 
 //============================================================================//
+
+BOOST_TTI_HAS_MEMBER_FUNCTION(serialize);
+
+//============================================================================//
 namespace serialization {
+//----------------------------------------------------------------------------//
+
+template<typename T>
+class Serial;
+
+//============================================================================//
 namespace detail {
 //----------------------------------------------------------------------------//
 
+// TODO: use the mpl map in Sequentialize.hpp
 using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
         std::int64_t, double, std::string>;
 
 //----------------------------------------------------------------------------//
 
+template<typename...Ts>
+struct make_void {
+    using type = void;
+};
+
 // Just to remain compatible with C++14.
-template<typename...>
-using void_t = void;
+template<typename...Ts>
+using void_t = typename make_void<Ts...>::type;
 
 //----------------------------------------------------------------------------//
 
-template<typename T, typename = void, typename = void>
+template<typename T, typename TypeSequence = void, typename = void,
+        typename = void>
 struct IsSerializable : std::false_type {
 };
 
-template<typename Serializable>
-struct IsSerializable<Serializable,
-        void_t<decltype(Serializable::serialize)>,
-        void_t<decltype(Serializable::deserialize)>>
+template<typename Serializable, typename TypeSequence>
+struct IsSerializable<Serializable, TypeSequence,
+        typename std::enable_if<std::is_void<decltype(
+                std::declval<const Serializable&>().serialize(
+                        std::declval<Serial<TypeSequence>&>()))>::value,
+                void>::type,
+        typename std::enable_if<std::is_void<decltype(
+                std::declval<Serializable&>().deserialize(
+                        std::declval<Serial<TypeSequence>&>()))>::value,
+                void>::type>
         : std::true_type {
 };
 
@@ -57,8 +81,8 @@ struct IsSerializableNonIntrusive : std::false_type {
 
 template<typename Serializable>
 struct IsSerializableNonIntrusive<Serializable,
-        void_t<decltype(serialize(std::declval<Serializable>()))>,
-        void_t<decltype(deserialize(std::declval<Serializable>()))>>
+        void_t<decltype(serialize(std::declval<Serializable&>()))>,
+        void_t<decltype(deserialize(std::declval<Serializable&>()))>>
         : std::true_type {
 };
 
@@ -70,7 +94,8 @@ struct IsPackable : std::false_type {
 
 template<typename Packable>
 struct IsPackable<Packable,
-        void_t<typename boost::mpl::contains<PackableData, Packable>::type>>
+        typename std::enable_if<boost::mpl::contains<PackableData,
+                               Packable>::value>::type>
         : std::true_type {
 };
 
@@ -104,6 +129,8 @@ struct IsMplSequence<boost::mpl::list<Ts...>> : std::true_type {
 template<typename ...Ts>
 struct IsMplSequence<boost::mpl::deque<Ts...>> : std::true_type {
 };
+
+BOOST_TTI_HAS_MEMBER_FUNCTION(serialize);
 
 //----------------------------------------------------------------------------//
 } // namespace detail
@@ -150,8 +177,8 @@ public:
     }
 
     template<typename Serializable>
-    typename std::enable_if<detail::IsSerializable<Serializable>::value,
-            Serial&>::type
+    typename std::enable_if<detail::IsSerializable<Serializable,
+            SerializableData>::value, Serial&>::type
     operator<<(const Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         constexpr std::int8_t typeId = detail::ElementIndex<
@@ -173,13 +200,13 @@ public:
     typename std::enable_if<
             //detail::IsSerializableNonIntrusive<Serializable>::value &&
             !detail::IsPackable<Serializable>::value &&
-            !detail::IsSerializable<Serializable>::value,
+            !detail::IsSerializable<Serializable, SerializableData>::value,
             Serial&>::type
-    operator<<(Serializable& serializable) {
+    operator<<(const Serializable& serializable) {
         static_assert(detail::IsSerializableNonIntrusive<Serializable>::value,
-                "Don't know how to serialize T. Provide "
-                "'Serial& serialize(const T&, Serial&)' or make it "
-                "'Serializable'!");
+                "Don't know how to serialize T. Provide the free function "
+                "'void serialize(const T&, Serial&)' or the member "
+                "'void T::serialize(Serial&) const'!");
         constexpr std::int8_t typeId = detail::ElementIndex<
                 SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
         constexpr bool hasTypeId = typeId ==
@@ -206,8 +233,8 @@ public:
     }
 
     template<typename Serializable>
-    typename std::enable_if<detail::IsSerializable<Serializable>::value,
-            Serial&>::type
+    typename std::enable_if<detail::IsSerializable<Serializable,
+            SerializableData>::value, Serial&>::type
     operator>>(Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         constexpr std::int8_t typeId = detail::ElementIndex<
@@ -232,13 +259,13 @@ public:
     typename std::enable_if<
             //detail::IsSerializableNonIntrusive<Serializable>::value &&
             !detail::IsPackable<Serializable>::value &&
-            !detail::IsSerializable<Serializable>::value,
+            !detail::IsSerializable<Serializable, SerializableData>::value,
             Serial&>::type
     operator>>(Serializable& serializable) {
         static_assert(detail::IsSerializableNonIntrusive<Serializable>::value,
-                "Don't know how to serialize T. Provide "
-                "'Serial& serialize(const T&, Serial&)' or make it "
-                "'Serializable'!");
+                "Don't know how to deserialize T. Provide the free function "
+                "'void deserialize(const T&, Serial&)' or the member "
+                "'void T::deserialize(Serial&)'!");
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         constexpr std::int8_t typeId = detail::ElementIndex<
                 SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
