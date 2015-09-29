@@ -182,6 +182,31 @@ TEST_F(DoubleTest, SerializeAndCompareData) {
     }
 }
 
+//============================================================================//
+
+class StringTest : public ::testing::Test {
+protected:
+    std::vector<std::pair<std::string, std::string>> testData{
+        {"a", ""}, {"b", "a"}, {"abcdef", "abcde"}};
+};
+
+//----------------------------------------------------------------------------//
+
+TEST_F(StringTest, PackAndUnpack) {
+    for (const auto& pair : testData) {
+        serialization::ByteSequence byteSequence;
+        serialization::pack(byteSequence, pair.first);
+        EXPECT_STREQ(pair.first.data(), reinterpret_cast<const char*>(
+                        byteSequence.data()));
+        std::string recreatedValue;
+        EXPECT_EQ(pair.first.length() + 1, // \0 byte
+                serialization::unpack(byteSequence.begin(), recreatedValue));
+        EXPECT_EQ(pair.first, recreatedValue);
+    }
+}
+
+// TODO: add int tests including promotion
+
 //----------------------------------------------------------------------------//
 } // unnamed namespace
 //============================================================================//

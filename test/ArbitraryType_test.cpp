@@ -1,6 +1,9 @@
 #include <serialization/Serial.hpp>
+#include <serialization/concept/Serializable.hpp>
 
 #include <gtest/gtest.h>
+
+#include <boost/concept/assert.hpp>
 
 //============================================================================//
 namespace {
@@ -42,6 +45,10 @@ protected:
 
 //----------------------------------------------------------------------------//
 
+TEST_F(SerializableTest, FooConceptCheck) {
+    BOOST_CONCEPT_ASSERT((serialization::concept::Serializable<Foo, Serial>));
+}
+
 TEST_F(SerializableTest, TestFoo) {
     Serial serial;
     Foo foo, recreatedFoo;
@@ -52,9 +59,28 @@ TEST_F(SerializableTest, TestFoo) {
     EXPECT_EQ(foo, recreatedFoo);
 }
 
-// TODO: add negative tests
-// TODO: add int tests including promotion
-// TODO: string tests
+TEST_F(SerializableTest, AbortsOnTypeMismatch) {
+    Serial serial;
+    Foo foo;
+
+    serial << foo;
+    serial << 4;
+
+    serial >> foo;
+    EXPECT_DEATH({serial >> foo;},
+            "Type Id does not match with the expected one.");
+}
+
+TEST_F(SerializableTest, AbortsWhenBytesRunOut) {
+    Serial serial;
+    Foo foo;
+
+    serial << foo;
+
+    serial >> foo;
+    EXPECT_DEATH({serial >> foo;},
+            "Cannot unpack more data of this type.");
+}
 
 //----------------------------------------------------------------------------//
 } // unnamed namespace
