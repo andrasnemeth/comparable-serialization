@@ -18,6 +18,6 @@ if [ ! -f "$gtest_archive" ]; then
    popd
 fi
 
-GTEST_LIB="$gtest_archive" tup unit-test
+GTEST_LIB="$gtest_archive" tup bin/unit-test
 
-./unit-test
+./bin/unit-test

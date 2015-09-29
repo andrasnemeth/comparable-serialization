@@ -5,7 +5,10 @@ GTEST_LIB = $(GTEST_DIR)/build/libgtest_main.a $(GTEST_DIR)/build/libgtest.a
 GTEST_INCLUDE = -I$(GTEST_DIR)/include
 STD_LIBS = -lpthread
 
+BUILD_DIR = ./bin
+
 .gitignore
 
 #: |> git submodule update --init --recursive modules/googletest |> modules/googletest
-: test/unit-test.cpp |> clang++ test/unit-test.cpp $(GTEST_LIB) $(CXXFLAGS) $(INCLUDE) $(GTEST_INCLUDE) $(STD_LIBS) -o %o |> unit-test
+: foreach test/*.cpp |> clang++ -c %f $(CXXFLAGS) $(INCLUDE) $(GTEST_INCLUDE) -o %o |> $(BUILD_DIR)/%B.o {test-objs}
+: {test-objs} |> clang++ %f $(GTEST_LIB) $(STD_LIBS) -o %o |> $(BUILD_DIR)/unit-test
