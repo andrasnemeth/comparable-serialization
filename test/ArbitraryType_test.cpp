@@ -41,13 +41,11 @@ protected:
         int value1;
         double value2;
     };
+
+    BOOST_CONCEPT_ASSERT((serialization::concept::Serializable<Foo, Serial>));
 };
 
 //----------------------------------------------------------------------------//
-
-TEST_F(SerializableTest, FooConceptCheck) {
-    BOOST_CONCEPT_ASSERT((serialization::concept::Serializable<Foo, Serial>));
-}
 
 TEST_F(SerializableTest, TestFoo) {
     Serial serial;
@@ -80,6 +78,44 @@ TEST_F(SerializableTest, AbortsWhenBytesRunOut) {
     serial >> foo;
     EXPECT_DEATH({serial >> foo;},
             "Cannot unpack more data of this type.");
+}
+
+//============================================================================//
+namespace foo {
+//----------------------------------------------------------------------------//
+
+struct Bar {
+    int a;
+    double b;
+};
+
+bool operator==(const Bar& lhs, const Bar& rhs) {
+    return lhs.a == rhs.a && lhs.b == rhs.b;
+}
+
+using Serial = serialization::Serial<boost::mpl::vector<Bar>>;
+
+void serialize(const Bar& bar, Serial& serial) {
+    serial << bar.a;
+    serial << bar.b;
+}
+
+void deserialize(Bar& bar, Serial& serial) {
+    serial >> bar.a;
+    serial >> bar.b;
+}
+
+//----------------------------------------------------------------------------//
+} // namespace foo
+//============================================================================//
+
+TEST(ExternalSerializableTest, TestBar) {
+    foo::Serial serial;
+    foo::Bar bar, recreatedBar;
+    serial << bar;
+    serial >> recreatedBar;
+
+    EXPECT_EQ(bar, recreatedBar);
 }
 
 //----------------------------------------------------------------------------//

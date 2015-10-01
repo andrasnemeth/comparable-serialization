@@ -75,14 +75,20 @@ struct IsSerializable<Serializable, TypeSequence,
 
 //----------------------------------------------------------------------------//
 
-template<typename T, typename = void, typename = void>
+template<typename T, typename TypeSequence, typename = void, typename = void>
 struct IsSerializableNonIntrusive : std::false_type {
 };
 
-template<typename Serializable>
-struct IsSerializableNonIntrusive<Serializable,
-        void_t<decltype(serialize(std::declval<Serializable&>()))>,
-        void_t<decltype(deserialize(std::declval<Serializable&>()))>>
+template<typename Serializable, typename TypeSequence>
+struct IsSerializableNonIntrusive<Serializable, TypeSequence,
+        typename std::enable_if<std::is_void<decltype(serialize(
+                        std::declval<const Serializable&>(),
+                        std::declval<Serial<TypeSequence>&>()))>::value,
+                void>::type,
+        typename std::enable_if<std::is_void<decltype(deserialize(
+                        std::declval<Serializable&>(),
+                        std::declval<Serial<TypeSequence>&>()))>::value,
+                void>::type>
         : std::true_type {
 };
 
@@ -203,7 +209,8 @@ public:
             !detail::IsSerializable<Serializable, SerializableData>::value,
             Serial&>::type
     operator<<(const Serializable& serializable) {
-        static_assert(detail::IsSerializableNonIntrusive<Serializable>::value,
+        static_assert(detail::IsSerializableNonIntrusive<Serializable,
+                SerializableData>::value,
                 "Don't know how to serialize T. Provide the free function "
                 "'void serialize(const T&, Serial&)' or the member "
                 "'void T::serialize(Serial&) const'!");
@@ -262,11 +269,11 @@ public:
             !detail::IsSerializable<Serializable, SerializableData>::value,
             Serial&>::type
     operator>>(Serializable& serializable) {
-        static_assert(detail::IsSerializableNonIntrusive<Serializable>::value,
+        static_assert(detail::IsSerializableNonIntrusive<Serializable,
+                SerializableData>::value,
                 "Don't know how to deserialize T. Provide the free function "
                 "'void deserialize(const T&, Serial&)' or the member "
                 "'void T::deserialize(Serial&)'!");
-        BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         constexpr std::int8_t typeId = detail::ElementIndex<
                 SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
         constexpr bool hasTypeId = typeId ==
@@ -278,7 +285,7 @@ public:
             BOOST_ASSERT_MSG(unpackedTypeId == typeId,
                     "Type Id does not match with the expected one.");
         }
-        serializable.deserialize(*this);
+        deserialize(serializable, *this);
         return *this;
     }
 
