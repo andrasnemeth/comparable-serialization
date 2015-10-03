@@ -4,16 +4,11 @@
 #include "ByteSequence.hpp"
 #include "Sequentialize.hpp"
 #include "concept/Serializable.hpp"
+#include "detail/TypeTraits.hpp"
 
 #include <boost/assert.hpp>
 #include <boost/concept/assert.hpp>
-#include <boost/mpl/contains.hpp>
-#include <boost/mpl/distance.hpp>
-#include <boost/mpl/deque.hpp>
-#include <boost/mpl/list.hpp>
-#include <boost/mpl/set.hpp>
 #include <boost/mpl/size.hpp>
-#include <boost/mpl/vector.hpp>
 #include <boost/operators.hpp>
 #include <boost/tti/has_member_function.hpp>
 
@@ -24,123 +19,8 @@
 #include <utility>
 
 //============================================================================//
-
-BOOST_TTI_HAS_MEMBER_FUNCTION(serialize);
-
-//============================================================================//
 namespace serialization {
 //----------------------------------------------------------------------------//
-
-template<typename T>
-class Serial;
-
-//============================================================================//
-namespace detail {
-//----------------------------------------------------------------------------//
-
-// TODO: use the mpl map in Sequentialize.hpp
-using PackableData = boost::mpl::vector<std::int8_t, std::int16_t, std::int32_t,
-        std::int64_t, double, std::string>;
-
-//----------------------------------------------------------------------------//
-
-template<typename...Ts>
-struct make_void {
-    using type = void;
-};
-
-// Just to remain compatible with C++14.
-template<typename...Ts>
-using void_t = typename make_void<Ts...>::type;
-
-//----------------------------------------------------------------------------//
-
-template<typename T, typename TypeSequence = void, typename = void,
-        typename = void>
-struct IsSerializable : std::false_type {
-};
-
-template<typename Serializable, typename TypeSequence>
-struct IsSerializable<Serializable, TypeSequence,
-        typename std::enable_if<std::is_void<decltype(
-                std::declval<const Serializable&>().serialize(
-                        std::declval<Serial<TypeSequence>&>()))>::value,
-                void>::type,
-        typename std::enable_if<std::is_void<decltype(
-                std::declval<Serializable&>().deserialize(
-                        std::declval<Serial<TypeSequence>&>()))>::value,
-                void>::type>
-        : std::true_type {
-};
-
-//----------------------------------------------------------------------------//
-
-template<typename T, typename TypeSequence, typename = void, typename = void>
-struct IsSerializableNonIntrusive : std::false_type {
-};
-
-template<typename Serializable, typename TypeSequence>
-struct IsSerializableNonIntrusive<Serializable, TypeSequence,
-        typename std::enable_if<std::is_void<decltype(serialize(
-                        std::declval<const Serializable&>(),
-                        std::declval<Serial<TypeSequence>&>()))>::value,
-                void>::type,
-        typename std::enable_if<std::is_void<decltype(deserialize(
-                        std::declval<Serializable&>(),
-                        std::declval<Serial<TypeSequence>&>()))>::value,
-                void>::type>
-        : std::true_type {
-};
-
-//----------------------------------------------------------------------------//
-
-template<typename T, typename = void>
-struct IsPackable : std::false_type {
-};
-
-template<typename Packable>
-struct IsPackable<Packable,
-        typename std::enable_if<boost::mpl::contains<PackableData,
-                               Packable>::value>::type>
-        : std::true_type {
-};
-
-//----------------------------------------------------------------------------//
-
-template<typename Sequence, typename Element>
-struct ElementIndex {
-    enum { value =
-           boost::mpl::distance<typename boost::mpl::begin<Sequence>::type,
-                   typename boost::mpl::find<Sequence, Element>::type>::value };
-};
-
-//----------------------------------------------------------------------------//
-
-template<typename T>
-struct IsMplSequence : std::false_type {
-};
-
-template<typename ...Ts>
-struct IsMplSequence<boost::mpl::vector<Ts...>> : std::true_type {
-};
-
-template<typename ...Ts>
-struct IsMplSequence<boost::mpl::set<Ts...>> : std::true_type {
-};
-
-template<typename ...Ts>
-struct IsMplSequence<boost::mpl::list<Ts...>> : std::true_type {
-};
-
-template<typename ...Ts>
-struct IsMplSequence<boost::mpl::deque<Ts...>> : std::true_type {
-};
-
-BOOST_TTI_HAS_MEMBER_FUNCTION(serialize);
-
-//----------------------------------------------------------------------------//
-} // namespace detail
-//============================================================================//
 
 // In order to compare arbitrary types in serial form, we need to prepend all
 // raw data in a serial with type tags.

@@ -2,16 +2,14 @@
 #define SERIALIZATION_SEQUENTIALIZE_HPP
 
 #include "ByteSequence.hpp"
+#include "detail/ConversionMap.hpp"
 
 #include <boost/mpl/at.hpp>
 #include <boost/mpl/insert.hpp>
-#include <boost/mpl/map.hpp>
 #include <boost/mpl/transform.hpp>
-#include <boost/mpl/pair.hpp>
 #include <boost/mpl/placeholders.hpp>
 
 #include <cstdint>
-#include <cstring> // remove
 #include <limits>
 #include <string>
 
@@ -92,20 +90,6 @@ inline std::uint64_t swapBytes(const std::uint64_t& value) {
 #undef SWAP_U32
 #undef SWAP_U64
 
-//----------------------------------------------------------------------------//
-
-using ConversionPackMap = boost::mpl::map<
-        boost::mpl::pair<std::int8_t, std::uint8_t>,
-        boost::mpl::pair<std::int16_t, std::uint16_t>,
-        boost::mpl::pair<std::int32_t, std::uint32_t>,
-        boost::mpl::pair<std::int64_t, std::uint64_t>,
-        boost::mpl::pair<double, std::uint64_t>>;
-
-//----------------------------------------------------------------------------//
-
-template<typename Int>
-struct UnableToConvert;
-
 //============================================================================//
 
 template<typename UnsignedInt>
@@ -137,9 +121,10 @@ void appendToSequence(ByteSequence& sequence, const PackedValue& packedValue) {
 
 template<typename Int>
 void pack(ByteSequence& sequence, const Int& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
+    using PackedValue = typename boost::mpl::at<
+            detail::ConversionMap, Int>::type;
     static_assert(!std::is_same<PackedValue,
-            boost::mpl::end<ConversionPackMap>::type>::value,
+            boost::mpl::end<detail::ConversionMap>::type>::value,
             "Cannot pack this type!");
 
     PackedValue packedValue = 0;//getZero<PackedValue>();
@@ -159,7 +144,7 @@ void pack(ByteSequence& sequence, const Int& value) {
 // It seems good as it is now, no reason why to change that
 template<>
 inline void pack<double>(ByteSequence& sequence, const double& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap,
+    using PackedValue = typename boost::mpl::at<detail::ConversionMap,
             double>::type;
     // trick the first bit :)
     double copiedValue = value * -1;
@@ -182,9 +167,10 @@ inline void pack<std::string>(ByteSequence& sequence,
 
 template<typename Int>
 std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap, Int>::type;
+    using PackedValue = typename boost::mpl::at<
+            detail::ConversionMap, Int>::type;
     static_assert(!std::is_same<PackedValue,
-            boost::mpl::end<ConversionPackMap>::type>::value,
+            boost::mpl::end<detail::ConversionMap>::type>::value,
             "Cannot pack this type!");
 
     PackedValue packedValue = swapBytes(*reinterpret_cast<const PackedValue*>(
@@ -202,7 +188,7 @@ std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
 template<>
 inline std::size_t unpack<double>(const ByteSequence::const_iterator& iterator,
         double& value) {
-    using PackedValue = typename boost::mpl::at<ConversionPackMap,
+    using PackedValue = typename boost::mpl::at<detail::ConversionMap,
             double>::type;
 
     PackedValue packedValue =
