@@ -1,14 +1,12 @@
 INCLUDE = -Iinclude
 CXXFLAGS = -std=c++11 -fdiagnostics-color -O0 -g3
-GTEST_DIR = modules/googletest/googletest
-GTEST_LIB = $(GTEST_DIR)/build/libgtest_main.a $(GTEST_DIR)/build/libgtest.a
-GTEST_INCLUDE = -I$(GTEST_DIR)/include
+GTEST_LIBS = -lgtest_main -lgtest
 STD_LIBS = -lpthread
 
 BUILD_DIR = ./bin
 
 .gitignore
 
-#: |> git submodule update --init --recursive modules/googletest |> modules/googletest
-: foreach test/*.cpp |> clang++ -c %f $(CXXFLAGS) $(INCLUDE) $(GTEST_INCLUDE) -o %o |> $(BUILD_DIR)/%B.o {test-objs}
-: {test-objs} |> clang++ %f $(GTEST_LIB) $(STD_LIBS) -o %o |> $(BUILD_DIR)/unit-test
+: foreach test/*.cpp |> clang++ -c %f $(CXXFLAGS) $(INCLUDE) -o %o |> $(BUILD_DIR)/%B.o {test-objs}
+: {test-objs} |> clang++ %f $(GTEST_LIBS) $(STD_LIBS) -o %o |> $(BUILD_DIR)/unit-test
+: $(BUILD_DIR)/unit-test |> $(BUILD_DIR)/unit-test --gtest_color=yes |>

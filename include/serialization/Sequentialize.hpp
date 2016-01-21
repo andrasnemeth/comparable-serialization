@@ -8,6 +8,7 @@
 #include <boost/mpl/insert.hpp>
 #include <boost/mpl/transform.hpp>
 #include <boost/mpl/placeholders.hpp>
+#include <boost/range/iterator_range_core.hpp>
 
 #include <cstdint>
 #include <limits>
@@ -110,33 +111,74 @@ constexpr PackedValue getOffset() {
 //----------------------------------------------------------------------------//
 
 template<typename PackedValue>
-void appendToSequence(ByteSequence& sequence, const PackedValue& packedValue) {
-
+void appendToSequence(ByteSequence& sequence,
+        const PackedValue& packedValue) {
     const byte* valueArray = reinterpret_cast<const byte*>(&packedValue);
     sequence.insert(sequence.end(), valueArray,
-        valueArray + sizeof(PackedValue));
+            valueArray + sizeof(packedValue));
 }
 
 //----------------------------------------------------------------------------//
 
-template<typename Int>
-void pack(ByteSequence& sequence, const Int& value) {
+template<typename PackedValue>
+void compressAndAppendToSequence(ByteSequence& sequence,
+        const PackedValue& packedValue) {
+    unsigned char& size = sequence.back();
+    const byte* valueArray = reinterpret_cast<const byte*>(&packedValue);
+    constexpr unsigned char maxSize = static_cast<unsigned char>(sizeof(
+                    packedValue));
+    for (unsigned char i = 0; i < maxSize; ++i) {
+        if (*valueArray > 0) {
+            unsigned char offset = maxSize - i;
+            sequence.insert(sequence.end(), valueArray, valueArray + offset);
+        }
+    }
+}
+
+//----------------------------------------------------------------------------//
+
+template<typename UnsignedInteger, typename Integer>
+UnsignedInteger shiftInteger(const Integer& value) {
+    UnsignedInteger packedValue = 0;
+
+    if (value >= 0) {
+        packedValue = swapBytes<UnsignedInteger>(static_cast<UnsignedInteger>(
+                        value) + getOffset<Integer, UnsignedInteger>());
+    } else {
+        packedValue = swapBytes<UnsignedInteger>(static_cast<UnsignedInteger>(
+                        value + getOffset<Integer, UnsignedInteger>()));
+    }
+    return packedValue;
+}
+
+template<typename UnsignedInteger, typename Integer>
+void shiftAndPackInteger(ByteSequence& sequence, const Integer& value) {
+    UnsignedInteger packedValue = shiftInteger<UnsignedInteger>(value);
+    //compressAndAppendToSequence(sequence, packedValue);
+    appendToSequence(sequence, packedValue);
+}
+
+//----------------------------------------------------------------------------//
+
+// TODO: compare all integers regardless of the representation size and in the
+//       same time compress integers as follows:
+//       one type tag for all integers: integer (8, 16, 32 and 64 bits)
+//       sign bit: included in size, i.e. a positive number has a size with
+//              the first bit set.
+//       size: how many bytes are occupied excluding those has only 0 bits.
+//              When comparing two numbers when one has a greater size, that
+//              means it has a higher bit set then the other so comparing the
+//              size is enough to conclude which is the bigger.
+//       data: the actual bytes of the integer in big endian.
+//
+template<typename Integer>
+void pack(ByteSequence& sequence, const Integer& value) {
     using PackedValue = typename boost::mpl::at<
-            detail::ConversionMap, Int>::type;
+            detail::ConversionMap, Integer>::type;
     static_assert(!std::is_same<PackedValue,
             boost::mpl::end<detail::ConversionMap>::type>::value,
             "Cannot pack this type!");
-
-    PackedValue packedValue = 0;//getZero<PackedValue>();
-    if (value >= 0) {
-        packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value)
-                + getOffset<Int, PackedValue>());
-    } else {
-        packedValue = swapBytes<PackedValue>(static_cast<PackedValue>(value
-                + getOffset<Int, PackedValue>()));
-    }
-
-    appendToSequence(sequence, packedValue);
+    shiftAndPackInteger<PackedValue>(sequence, value);
 }
 
 // IEEE-754: double floating point representation
@@ -165,13 +207,51 @@ inline void pack<std::string>(ByteSequence& sequence,
 
 //----------------------------------------------------------------------------//
 
+template<typename PackedValue, typename Integer>
+std::size_t unpackAndUnshiftInteger(
+        const boost::iterator_range<ByteSequence::const_iterator>& range,
+        Integer& value) {
+    PackedValue packedValue = swapBytes(*reinterpret_cast<const PackedValue*>(
+                    &*range.begin()));
+
+    if (packedValue >= getZero<PackedValue>()) {
+        value = static_cast<Integer>(packedValue -
+                getOffset<Integer, PackedValue>());
+    } else {
+        value = static_cast<Integer>(packedValue) -
+                getOffset<Integer, PackedValue>();
+    }
+
+    return sizeof(value);
+}
+
+template<typename PackedValue, typename Integer>
+void unpackAndUncompressInteger(
+        const boost::iterator_range<ByteSequence::const_iterator>& range,
+        Integer& value) {
+    unsigned char* valuePointer = reinterpret_cast<unsigned char*>(&value);
+    ByteSequence::const_iterator iterator = range.begin();
+    const unsigned char& size = *iterator;
+    ++iterator;
+    constexpr unsigned char maxSize = static_cast<unsigned char>(
+            sizeof(value));
+    unsigned char leadingZeroBytes = maxSize - size;
+    PackedValue packedValue;
+    unsigned char* valueArray = reinterpret_cast<unsigned char*>(&packedValue)
+            + leadingZeroBytes;
+    std::copy(iterator, iterator + size, valueArray);
+    value = static_cast<Integer>(packedValue - getOffset<Integer>());
+}
+
+//----------------------------------------------------------------------------//
+
 template<typename Int>
 std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
     using PackedValue = typename boost::mpl::at<
             detail::ConversionMap, Int>::type;
     static_assert(!std::is_same<PackedValue,
             boost::mpl::end<detail::ConversionMap>::type>::value,
-            "Cannot pack this type!");
+            "Cannot unpack this type!");
 
     PackedValue packedValue = swapBytes(*reinterpret_cast<const PackedValue*>(
                     &*iterator));
@@ -179,12 +259,13 @@ std::size_t unpack(const ByteSequence::const_iterator& iterator, Int& value) {
     if (packedValue >= getZero<PackedValue>()) {
         value = static_cast<Int>(packedValue - getOffset<Int, PackedValue>());
     } else {
-        value = static_cast<Int>(packedValue - getOffset<Int, PackedValue>());
+        value = static_cast<Int>(packedValue) - getOffset<Int, PackedValue>();
     }
 
     return sizeof(value);
 }
 
+// FIXME: inline?
 template<>
 inline std::size_t unpack<double>(const ByteSequence::const_iterator& iterator,
         double& value) {

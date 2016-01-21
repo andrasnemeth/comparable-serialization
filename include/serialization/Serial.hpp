@@ -35,12 +35,11 @@ private:
             < std::numeric_limits<std::int8_t>::max(),
             "Too many custom types!");
 
-    constexpr static const std::int8_t CUSTOM_TYPE_OFFSET =
+    constexpr static std::int8_t CUSTOM_TYPE_OFFSET =
             boost::mpl::size<detail::PackableData>::value;
 
 public:
-    Serial() : readOffset{0} {
-    }
+    Serial() = default;
 
     Serial(const char* data, const std::size_t& size)
             : byteSequence{data, data + size},
@@ -67,14 +66,7 @@ public:
             SerializableData>::value, Serial&>::type
     operator<<(const Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
-        constexpr bool hasTypeId = typeId ==
-                boost::mpl::size<SerializableData>::type::value
-                + CUSTOM_TYPE_OFFSET;
-        if (hasTypeId) {
-            pack(byteSequence, typeId);
-        }
+        packTypeId<Serializable>();
         serializable.serialize(*this);
         return *this;
     }
@@ -94,14 +86,7 @@ public:
                 "Don't know how to serialize T. Provide the free function "
                 "'void serialize(const T&, Serial&)' or the member "
                 "'void T::serialize(Serial&) const'!");
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
-        constexpr bool hasTypeId = typeId ==
-                boost::mpl::size<SerializableData>::type::value
-                + CUSTOM_TYPE_OFFSET;
-        if (hasTypeId) {
-            pack(byteSequence, typeId);
-        }
+        packTypeId<Serializable>();
         serialize(serializable, *this); // TODO: eliminate duplications
         return *this;
     }
@@ -111,7 +96,7 @@ public:
     operator>>(Packable& value) {
         constexpr std::int8_t typeId = detail::ElementIndex<
                 detail::PackableData, Packable>::value;
-        std::int8_t unpackedTypeId;
+        std::int8_t unpackedTypeId = -1;
         safeUnpack(unpackedTypeId);
         BOOST_ASSERT_MSG(unpackedTypeId == typeId,
                 "Type Id does not match with the expected one.");
@@ -124,17 +109,7 @@ public:
             SerializableData>::value, Serial&>::type
     operator>>(Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
-        constexpr bool hasTypeId = typeId ==
-            boost::mpl::size<SerializableData>::type::value
-            + CUSTOM_TYPE_OFFSET;
-        if (hasTypeId) {
-            std::int8_t unpackedTypeId;
-            safeUnpack(unpackedTypeId);
-            BOOST_ASSERT_MSG(unpackedTypeId == typeId,
-                    "Type Id does not match with the expected one.");
-        }
+        unpackTypeId<Serializable>();
         serializable.deserialize(*this);
         return *this;
     }
@@ -154,17 +129,7 @@ public:
                 "Don't know how to deserialize T. Provide the free function "
                 "'void deserialize(const T&, Serial&)' or the member "
                 "'void T::deserialize(Serial&)'!");
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
-        constexpr bool hasTypeId = typeId ==
-                boost::mpl::size<SerializableData>::type::value
-                + CUSTOM_TYPE_OFFSET;
-        if (hasTypeId) {
-            std::int8_t unpackedTypeId;
-            safeUnpack(unpackedTypeId);
-            BOOST_ASSERT_MSG(unpackedTypeId == typeId,
-                    "Type Id does not match with the expected one.");
-        }
+        unpackTypeId<Serializable>();
         deserialize(serializable, *this);
         return *this;
     }
@@ -190,8 +155,33 @@ private:
         readOffset += bytesProcessed;
     }
 
+    template<typename Serializable>
+    void packTypeId() {
+        constexpr bool hasTypeId = boost::mpl::contains<SerializableData,
+                Serializable>::value;
+        if (hasTypeId) { // no constexpr if
+            constexpr std::int8_t typeId = detail::ElementIndex<
+                    SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
+            pack(byteSequence, typeId);
+        }
+    }
+
+    template<typename Serializable>
+    void unpackTypeId() {
+        constexpr bool hasTypeId = boost::mpl::contains<SerializableData,
+                Serializable>::value;
+        if (hasTypeId) { // no constexpr if
+            constexpr std::int8_t typeId = detail::ElementIndex<
+                    SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
+            std::int8_t unpackedTypeId = -1;
+            safeUnpack(unpackedTypeId);
+            BOOST_ASSERT_MSG(unpackedTypeId == typeId,
+                    "Type Id does not match with the expected one.");
+        }
+    }
+
     ByteSequence byteSequence; // TODO: move ByteSequence into detail
-    std::size_t readOffset;
+    std::size_t readOffset = 0;
 };
 
 //----------------------------------------------------------------------------//

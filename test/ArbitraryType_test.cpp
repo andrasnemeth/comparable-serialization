@@ -5,6 +5,9 @@
 
 #include <boost/concept/assert.hpp>
 
+#include <cstdint>
+#include <string>
+
 //============================================================================//
 namespace {
 //----------------------------------------------------------------------------//
@@ -16,7 +19,10 @@ protected:
 
     class Foo {
     public:
-        Foo() : value1(1234), value2(0.0000043) {
+        Foo() : value1(0), value2(.0) {
+        }
+
+        Foo(int value1, double value2) : value1(value1), value2(value2) {
         }
 
         void serialize(Serial& serial) const {
@@ -49,7 +55,7 @@ protected:
 
 TEST_F(SerializableTest, TestFoo) {
     Serial serial;
-    Foo foo, recreatedFoo;
+    Foo foo{1234, 0.0000004}, recreatedFoo;
 
     serial << foo;
     serial >> recreatedFoo;
@@ -62,7 +68,7 @@ TEST_F(SerializableTest, AbortsOnTypeMismatch) {
     Foo foo;
 
     serial << foo;
-    serial << 4;
+    serial << std::string{"ABCDEF"};
 
     serial >> foo;
     EXPECT_DEATH({serial >> foo;},
