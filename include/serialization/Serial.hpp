@@ -1,15 +1,18 @@
 #ifndef SERIALIZATION_SERIAL_HPP
 #define SERIALIZATION_SERIAL_HPP
 
-#include "ByteSequence.hpp"
+#include "Features.hpp"
 #include "Sequentialize.hpp"
 #include "concept/Serializable.hpp"
+#include "detail/ByteSequence.hpp"
+#include "detail/Optional.hpp"
 #include "detail/TypeTraits.hpp"
 
 #include <boost/assert.hpp>
 #include <boost/concept/assert.hpp>
 #include <boost/mpl/size.hpp>
 #include <boost/operators.hpp>
+#include <boost/optional.hpp>
 #include <boost/tti/has_member_function.hpp>
 
 #include <cstdint>
@@ -20,19 +23,42 @@
 
 //============================================================================//
 namespace serialization {
+namespace detail {
 //----------------------------------------------------------------------------//
+
+template <typename T, typename SerializableData>
+constexpr detail::Optional<std::int8_t> getTypeId(
+        const std::size_t customTypeOffset) {
+    constexpr bool isPackable = detail::IsPackable<T>::value;
+    constexpr bool isTypeRegistered = boost::mpl::contains<SerializableData,
+            T>::value;
+    if (isPackable) {
+        return detail::ElementIndex<detail::PackableData, T>::value;
+    } else if (isTypeRegistered) {
+        return detail::ElementIndex<SerializableData, T>::value +
+                customTypeOffset;
+    }
+    return detail::none;
+}
+
+//----------------------------------------------------------------------------//
+} // nemspace detail
+//============================================================================//
+
 
 // In order to compare arbitrary types in serial form, we need to prepend all
 // raw data in a serial with type tags.
-template<typename SerializableData = boost::mpl::vector<>>
-class Serial : boost::totally_ordered<Serial<SerializableData>> {
+template <typename SerializableData = boost::mpl::vector<>,
+        typename IntegerFeature = StronglyTypedIntegers>
+class Serial : public Sequentializer<IntegerFeature> {
 private:
     static_assert(detail::IsMplSequence<SerializableData>::value,
             "Template argument must be an mpl sequence!");
 
-    static_assert(boost::mpl::size<SerializableData>::value
-            + boost::mpl::size<detail::PackableData>::value
-            < std::numeric_limits<std::int8_t>::max(),
+    static_assert(
+            boost::mpl::size<SerializableData>::value +
+                            boost::mpl::size<detail::PackableData>::value <
+                    std::numeric_limits<std::int8_t>::max(),
             "Too many custom types!");
 
     constexpr static std::int8_t CUSTOM_TYPE_OFFSET =
@@ -41,29 +67,25 @@ private:
 public:
     Serial() = default;
 
-    Serial(const char* data, const std::size_t& size)
-            : byteSequence{data, data + size},
-              readOffset{0} {
-    }
+    using Sequentializer<IntegerFeature>::Sequentializer;
 
     Serial(const Serial&) = delete;
     Serial(Serial&&) = default;
     Serial& operator=(const Serial&) = delete;
     Serial& operator=(Serial&&) = default;
 
-    template<typename Packable>
+    template <typename Packable>
     typename std::enable_if<detail::IsPackable<Packable>::value, Serial&>::type
     operator<<(const Packable& value) {
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                detail::PackableData, Packable>::value;
-        pack(byteSequence, typeId);
-        pack(byteSequence, value);
+        packTypeId<Packable>();
+        this->pack(value);
         return *this;
     }
 
-    template<typename Serializable>
-    typename std::enable_if<detail::IsSerializable<Serializable,
-            SerializableData>::value, Serial&>::type
+    template <typename Serializable>
+    typename std::enable_if<
+            detail::IsSerializable<Serializable, SerializableData,
+                    IntegerFeature>::value, Serial&>::type
     operator<<(const Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         packTypeId<Serializable>();
@@ -74,15 +96,16 @@ public:
     // Rather let go in here even if the user does not provide any mean to
     // serialize the supplied type. A meaningful error message will be shown
     // instead.
-    template<typename Serializable>
+    template <typename Serializable>
     typename std::enable_if<
-            //detail::IsSerializableNonIntrusive<Serializable>::value &&
+            // detail::IsSerializableNonIntrusive<Serializable>::value &&
             !detail::IsPackable<Serializable>::value &&
-            !detail::IsSerializable<Serializable, SerializableData>::value,
+                    !detail::IsSerializable<Serializable,
+                            SerializableData, IntegerFeature>::value,
             Serial&>::type
     operator<<(const Serializable& serializable) {
         static_assert(detail::IsSerializableNonIntrusive<Serializable,
-                SerializableData>::value,
+                SerializableData, IntegerFeature>::value,
                 "Don't know how to serialize T. Provide the free function "
                 "'void serialize(const T&, Serial&)' or the member "
                 "'void T::serialize(Serial&) const'!");
@@ -91,22 +114,18 @@ public:
         return *this;
     }
 
-    template<typename Packable>
+    template <typename Packable>
     typename std::enable_if<detail::IsPackable<Packable>::value, Serial&>::type
     operator>>(Packable& value) {
-        constexpr std::int8_t typeId = detail::ElementIndex<
-                detail::PackableData, Packable>::value;
-        std::int8_t unpackedTypeId = -1;
-        safeUnpack(unpackedTypeId);
-        BOOST_ASSERT_MSG(unpackedTypeId == typeId,
-                "Type Id does not match with the expected one.");
-        safeUnpack(value);
+        unpackTypeId<Packable>();
+        this->unpack(value);
         return *this;
     }
 
-    template<typename Serializable>
-    typename std::enable_if<detail::IsSerializable<Serializable,
-            SerializableData>::value, Serial&>::type
+    template <typename Serializable>
+    typename std::enable_if<
+            detail::IsSerializable<Serializable, SerializableData,
+                    IntegerFeature>::value, Serial&>::type
     operator>>(Serializable& serializable) {
         BOOST_CONCEPT_ASSERT((concept::Serializable<Serializable, Serial>));
         unpackTypeId<Serializable>();
@@ -117,15 +136,16 @@ public:
     // Rather let go in here even if the user does not provide any mean to
     // serialize the supplied type. A meaningful error message will be shown
     // instead.
-    template<typename Serializable>
+    template <typename Serializable>
     typename std::enable_if<
-            //detail::IsSerializableNonIntrusive<Serializable>::value &&
+            // detail::IsSerializableNonIntrusive<Serializable>::value &&
             !detail::IsPackable<Serializable>::value &&
-            !detail::IsSerializable<Serializable, SerializableData>::value,
+                    !detail::IsSerializable<Serializable,
+                            SerializableData, IntegerFeature>::value,
             Serial&>::type
     operator>>(Serializable& serializable) {
         static_assert(detail::IsSerializableNonIntrusive<Serializable,
-                SerializableData>::value,
+                SerializableData, IntegerFeature>::value,
                 "Don't know how to deserialize T. Provide the free function "
                 "'void deserialize(const T&, Serial&)' or the member "
                 "'void T::deserialize(Serial&)'!");
@@ -134,58 +154,31 @@ public:
         return *this;
     }
 
-    bool operator==(const Serial& rhs) const {
-        return memcmp(byteSequence.data(), rhs.byteSequence.data(),
-                std::min(byteSequence.size(), rhs.byteSequence.size())) == 0;
-    }
-
-    bool operator<(const Serial& rhs) const {
-        return memcmp(byteSequence.data(), rhs.byteSequence.data(),
-                std::min(byteSequence.size(), rhs.byteSequence.size())) < 0;
-    }
-
 private:
-    template<typename Value>
-    void safeUnpack(Value& value) {
-        ByteSequence::const_iterator readIterator = byteSequence.cbegin();
-        std::advance(readIterator, readOffset);
-        BOOST_ASSERT_MSG(readOffset + sizeof(value) <= byteSequence.size(),
-                "Cannot unpack more data of this type.");
-        std::size_t bytesProcessed = unpack(readIterator, value);
-        readOffset += bytesProcessed;
-    }
-
-    template<typename Serializable>
+    template <typename T>
     void packTypeId() {
-        constexpr bool hasTypeId = boost::mpl::contains<SerializableData,
-                Serializable>::value;
-        if (hasTypeId) { // no constexpr if
-            constexpr std::int8_t typeId = detail::ElementIndex<
-                    SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
-            pack(byteSequence, typeId);
+        constexpr detail::Optional<std::int8_t> typeId =
+                detail::getTypeId<T, SerializableData>(CUSTOM_TYPE_OFFSET);
+        if (typeId) { // no constexpr if
+            this->pack(*typeId);
         }
     }
 
-    template<typename Serializable>
+    template <typename T>
     void unpackTypeId() {
-        constexpr bool hasTypeId = boost::mpl::contains<SerializableData,
-                Serializable>::value;
-        if (hasTypeId) { // no constexpr if
-            constexpr std::int8_t typeId = detail::ElementIndex<
-                    SerializableData, Serializable>::value + CUSTOM_TYPE_OFFSET;
+        constexpr detail::Optional<std::int8_t> typeId =
+                detail::getTypeId<T, SerializableData>(CUSTOM_TYPE_OFFSET);
+        if (typeId) { // no constexpr if
             std::int8_t unpackedTypeId = -1;
-            safeUnpack(unpackedTypeId);
-            BOOST_ASSERT_MSG(unpackedTypeId == typeId,
+            this->unpack(unpackedTypeId);
+            BOOST_ASSERT_MSG(unpackedTypeId == *typeId,
                     "Type Id does not match with the expected one.");
         }
     }
-
-    ByteSequence byteSequence; // TODO: move ByteSequence into detail
-    std::size_t readOffset = 0;
 };
 
 //----------------------------------------------------------------------------//
-}  // namespace serialization
+} // namespace serialization
 //============================================================================//
 
 #endif // SERIALIZATION_SERIAL_HPP

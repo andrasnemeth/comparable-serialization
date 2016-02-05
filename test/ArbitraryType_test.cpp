@@ -83,7 +83,7 @@ TEST_F(SerializableTest, AbortsWhenBytesRunOut) {
 
     serial >> foo;
     EXPECT_DEATH({serial >> foo;},
-            "Cannot unpack more data of this type.");
+            "Cannot unpack more data.");
 }
 
 //============================================================================//

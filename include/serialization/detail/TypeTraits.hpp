@@ -12,13 +12,14 @@
 #include <boost/mpl/find.hpp>
 #include <boost/mpl/list.hpp>
 #include <boost/mpl/set.hpp>
+#include <boost/mpl/transform.hpp>
 #include <boost/mpl/vector.hpp>
 
 //============================================================================//
 namespace serialization {
 //----------------------------------------------------------------------------//
 
-template<typename T>
+template<typename T, typename U>
 class Serial;
 
 //============================================================================//
@@ -31,39 +32,45 @@ using PackableData = boost::mpl::transform<ConversionMap,
 
 //----------------------------------------------------------------------------//
 
-template<typename T, typename TypeSequence, typename = void,
-        typename = void>
+template<typename T, typename TypeSequence, typename IntegerFeature,
+        typename = void, typename = void>
 struct IsSerializable : std::false_type {
 };
 
-template<typename Serializable, typename TypeSequence>
-struct IsSerializable<Serializable, TypeSequence,
+template<typename Serializable, typename TypeSequence,
+        typename IntegerFeature>
+struct IsSerializable<Serializable, TypeSequence, IntegerFeature,
         typename std::enable_if<std::is_void<decltype(
                 std::declval<const Serializable&>().serialize(
-                        std::declval<Serial<TypeSequence>&>()))>::value,
+                        std::declval<Serial<TypeSequence,
+                        IntegerFeature>&>()))>::value,
                 void>::type,
         typename std::enable_if<std::is_void<decltype(
                 std::declval<Serializable&>().deserialize(
-                        std::declval<Serial<TypeSequence>&>()))>::value,
+                        std::declval<Serial<TypeSequence,
+                        IntegerFeature>&>()))>::value,
                 void>::type>
         : std::true_type {
 };
 
 //----------------------------------------------------------------------------//
 
-template<typename T, typename TypeSequence, typename = void, typename = void>
+template<typename T, typename TypeSequence, typename IntegerFeature,
+        typename = void, typename = void>
 struct IsSerializableNonIntrusive : std::false_type {
 };
 
-template<typename Serializable, typename TypeSequence>
-struct IsSerializableNonIntrusive<Serializable, TypeSequence,
+template<typename Serializable, typename TypeSequence, typename IntegerFeature>
+struct IsSerializableNonIntrusive<Serializable, TypeSequence, IntegerFeature,
         typename std::enable_if<std::is_void<decltype(serialize(
                         std::declval<const Serializable&>(),
-                        std::declval<Serial<TypeSequence>&>()))>::value,
+                        std::declval<Serial<TypeSequence,
+                        IntegerFeature>&>()))>::value,
                 void>::type,
         typename std::enable_if<std::is_void<decltype(deserialize(
                         std::declval<Serializable&>(),
-                        std::declval<Serial<TypeSequence>&>()))>::value,
+                        std::declval<Serial<TypeSequence,
+                        IntegerFeature>&>()))>::value,
                 void>::type>
         : std::true_type {
 };

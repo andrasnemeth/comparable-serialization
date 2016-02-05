@@ -1,5 +1,5 @@
 INCLUDE = -Iinclude
-CXXFLAGS = -std=c++11 -fdiagnostics-color -O0 -g3
+CXXFLAGS = -std=c++14 -fdiagnostics-color -O0 -g3
 GTEST_LIBS = -lgtest_main -lgtest
 STD_LIBS = -lpthread
 

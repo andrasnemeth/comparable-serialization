@@ -1,4 +1,3 @@
-#include <serialization/ByteSequence.hpp>
 #include <serialization/Sequentialize.hpp>
 #include <serialization/Serial.hpp>
 
@@ -18,55 +17,26 @@ namespace {
 template<typename Int>
 class SequentializeIntTest : public ::testing::Test {
 protected:
-    typename std::make_unsigned<Int>::type swapValue(const Int& value) {
-        static_assert(std::is_signed<Int>::value, "Not a signed int");
-
-        using UnsignedInt = typename std::make_unsigned<Int>::type;
-
-        if (value < 0) {
-            return boost::endian::native_to_big(
-                    static_cast<UnsignedInt>(value
-                            + static_cast<UnsignedInt>(
-                                    std::numeric_limits<Int>::max())
-                            + static_cast<UnsignedInt>(1)));
-        } else {
-            UnsignedInt unsignedInt = static_cast<UnsignedInt>(value)
-                + static_cast<UnsignedInt>(std::numeric_limits<Int>::max()
-                        + static_cast<UnsignedInt>(1));
-
-            return boost::endian::native_to_big(unsignedInt);
-        }
-    }
-
     void packAndUnpack(const Int& value) {
-        using PackedInt = typename std::make_unsigned<Int>::type;
-
-        serialization::ByteSequence byteSequence;
-        PackedInt swappedValue = swapValue(value);
-        serialization::pack(byteSequence, value);
-        ASSERT_EQ(sizeof(Int), byteSequence.size());
-        PackedInt packedValue = *reinterpret_cast<const PackedInt*>(
-                byteSequence.data());
-
-        EXPECT_EQ(swappedValue, packedValue) << "original value is: " << value;
-
+        serialization::Sequentializer<serialization::StronglyTypedIntegers>
+                sequentializer;
+        sequentializer.pack(value);
         Int reconstructedValue = 0;
-        EXPECT_EQ(sizeof(Int), serialization::unpack(byteSequence.begin(),
-                        reconstructedValue));
+        sequentializer.unpack(reconstructedValue);
         EXPECT_EQ(value, reconstructedValue);
     }
 
     const std::vector<std::pair<std::int64_t, std::int64_t>> testData{{0, -1},
         {5, 1}, {140, -45}, {std::numeric_limits<std::int8_t>::max(),
-                std::numeric_limits<std::int8_t>::min() + 1},
+                std::numeric_limits<std::int8_t>::min()},
         {5430, 4432}, {3322, -1122}, {std::numeric_limits<std::int16_t>::max(),
-                std::numeric_limits<std::int16_t>::min() + 1},
+                std::numeric_limits<std::int16_t>::min()},
         {324354534, 112222233}, {765522, -343546},
         {std::numeric_limits<std::int32_t>::max(),
-                std::numeric_limits<std::int32_t>::min() + 1},
+                std::numeric_limits<std::int32_t>::min()},
         {3234534656456452323L, -5256547647575563423L},
         {std::numeric_limits<std::int64_t>::max(),
-                std::numeric_limits<std::int64_t>::min() + 1}};
+                std::numeric_limits<std::int64_t>::min()}};
 };
 
 TYPED_TEST_CASE_P(SequentializeIntTest);
@@ -125,11 +95,11 @@ INSTANTIATE_TYPED_TEST_CASE_P(PackableIntTestcase, SequentializeIntTest,
 class DoubleTest : public ::testing::Test {
 protected:
     void packAndUnpack(const double& data) {
-        serialization::ByteSequence byteSequence;
-        serialization::pack(byteSequence, data);
+        serialization::Sequentializer<serialization::StronglyTypedIntegers>
+                sequentializer;
+        sequentializer.pack(data);
         double unpackedData;
-        EXPECT_EQ(sizeof(data), byteSequence.size());
-        serialization::unpack(byteSequence.begin(), unpackedData);
+        sequentializer.unpack(unpackedData);
         if (isnan(data)) {
             EXPECT_TRUE(isnan(unpackedData));
         } else {
@@ -194,13 +164,11 @@ protected:
 
 TEST_F(StringTest, PackAndUnpack) {
     for (const auto& pair : testData) {
-        serialization::ByteSequence byteSequence;
-        serialization::pack(byteSequence, pair.first);
-        EXPECT_STREQ(pair.first.data(), reinterpret_cast<const char*>(
-                        byteSequence.data()));
+        serialization::Sequentializer<serialization::StronglyTypedIntegers>
+                sequentializer;
+        sequentializer.pack(pair.first);
         std::string recreatedValue;
-        EXPECT_EQ(pair.first.length() + 1, // \0 byte
-                serialization::unpack(byteSequence.begin(), recreatedValue));
+        sequentializer.unpack(recreatedValue);
         EXPECT_EQ(pair.first, recreatedValue);
     }
 }

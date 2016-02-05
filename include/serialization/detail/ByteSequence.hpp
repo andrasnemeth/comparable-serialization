@@ -1,11 +1,11 @@
 #ifndef SERIALIZATION_BYTESEQUENCE_HPP
 #define SERIALIZATION_BYTESEQUENCE_HPP
 
-#include <cstdint>
 #include <vector>
 
 //============================================================================//
 namespace serialization {
+namespace detail {
 //----------------------------------------------------------------------------//
 
 using byte = unsigned char;
@@ -15,6 +15,7 @@ using byte = unsigned char;
 using ByteSequence = std::vector<byte>;
 
 //----------------------------------------------------------------------------//
+} // namespace detail
 } // namespace serialization
 //============================================================================//
 
